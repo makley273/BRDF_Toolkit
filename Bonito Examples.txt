@@ -1,0 +1,1189 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+The content has been processed where empty lines have been removed, content has been compressed (code blocks are separated by ⋮---- delimiter), security check has been disabled.
+
+================================================================
+File Summary
+================================================================
+
+Purpose:
+--------
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+
+File Format:
+------------
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  a. A separator line (================)
+  b. The file path (File: path/to/file)
+  c. Another separator line
+  d. The full contents of the file
+  e. A blank line
+
+Usage Guidelines:
+-----------------
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+
+Notes:
+------
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Empty lines have been removed from all files
+- Content has been compressed - code blocks are separated by ⋮---- delimiter
+- Security check has been disabled - content may contain sensitive information
+- Files are sorted by Git change count (files with more changes are at the bottom)
+
+
+================================================================
+Directory Structure
+================================================================
+assets/
+  julia.png/
+    julia.png
+basic_offline_makie.jl/
+  basic_offline_makie.jl
+basics.jl/
+  basics.jl
+choicesbox.jl/
+  choicesbox.jl
+editor.jl/
+  editor.jl
+german_clima.jl/
+  german_clima.jl
+image_slider.jl/
+  image_slider.jl
+js_dependency.jl/
+  js_dependency.jl
+JSModule.bundled.js/
+  JSModule.bundled.js
+JSModule.js/
+  JSModule.js
+markdown.jl/
+  markdown.jl
+oceananigans.jl/
+  oceananigans.jl
+overloading-connection.jl/
+  overloading-connection.jl
+serve.jl/
+  serve.jl
+sliderstyle.css/
+  sliderstyle.css
+subsession_integration.jl/
+  subsession_integration.jl
+threejs.jl/
+  threejs.jl
+wglmakie.jl/
+  wglmakie.jl
+
+================================================================
+Files
+================================================================
+
+================
+File: basic_offline_makie.jl/basic_offline_makie.jl
+================
+using Bonito, WGLMakie, Makie, Colors, FileIO
+using Bonito.DOM
+
+function styled_slider(slider, value)
+    rows(slider, DOM.span(value, class="p-1"), class="w-64 p-2 items-center")
+end
+
+columns(args...; class="") = DOM.div(args..., class=class * " flex flex-col")
+rows(args...; class="") = DOM.div(args..., class=class * " flex flex-row")
+css_color(c) = "background-color: #$(hex(c))"
+
+# get a somewhat interesting point cloud:
+cat = decompose(Point3f, FileIO.load(Makie.assetpath("cat.obj")))
+# Create a little interactive app
+app = App() do session
+    markersize = Bonito.Slider(range(10, stop=100, length=100))
+    hue_slider = Bonito.Slider(1:120)
+    color = map(hue_slider) do hue
+        HSV(hue, 0.5, 0.5)
+    end
+    f, ax, pl = scatter(cat, markersize=markersize.value, color=color, figure=(size=(800, 500),))
+    m_slider = styled_slider(markersize, map(x -> round(x, digits=1), markersize.value))
+    color_swatch = DOM.div(class="h-6 w-6 p-1 rounded dropshadow", style=map(css_color, color))
+    h_slider = styled_slider(hue_slider, color_swatch)
+    sliders = rows(m_slider, h_slider)
+    dom = DOM.div(Bonito.Styling, Bonito.TailwindCSS, columns(sliders, f))
+    return Bonito.record_states(session, dom)
+end;
+
+
+# mkdir("simple")
+Bonito.export_static("simple.html", app)
+
+================
+File: basics.jl/basics.jl
+================
+using Markdown
+md"""
+# What is Bonito?
+
+* a connection between Julia & Javascript
+* a reactive DOM
+* a server with routing
+* can be used for dashboards, wrapping JS libraries & writing webpages
+* Similar to React.js in some ways
+"""
+
+using Bonito, Observables
+using Bonito: @js_str, Session, App, onjs, onload, Button
+using Bonito: TextField, Slider, linkjs
+Bonito.browser_display()
+
+app = App(DOM.h1("Hello World"))
+display(app)
+
+
+md"""
+# Interaction with observables
+"""
+
+color = Observable("red")
+color_css = map(x-> "color: $(x)", color)
+
+app = App() do
+    return DOM.h1("Hello World", style=map(x-> "color: $(x)", color))
+end
+display(app)
+
+color[] = "green"
+
+app = App() do
+    color = Observable("red")
+    on(println, color)
+    button = DOM.div("click me", onclick=js"""(e)=> {
+        const color = '#' + ((1<<24)*Math.random() | 0).toString(16)
+        console.log(color)
+        $(color).notify(color)
+    }""")
+    style = map(x-> "color: $(x)", color)
+    return DOM.div(
+        button, DOM.h1("Hello World", style=style)
+    )
+end
+display(app)
+
+md"""
+# Other ways to execute Javascript
+"""
+
+app = App() do session::Session
+    color = Observable("red")
+    button = DOM.div("click me", onclick=js"e=> $(color).notify('blue')")
+    onload(session, button, js"""function load(button){
+        window.alert('Hi from JavaScript');
+    }""")
+
+    onjs(session, color, js"""function update(value){
+        window.alert(value);
+        // throw "heey!"
+    }""")
+
+    return DOM.div(
+        button, DOM.h1("Hello World", style=map(x-> "color: $(x)", color))
+    )
+end
+display(app)
+
+md"""
+# Including assets & Widgets
+"""
+
+MUI = Bonito.Asset("https://cdn.muicss.com/mui-0.10.1/css/mui.min.css")
+sliderstyle = Bonito.Asset(joinpath(@__DIR__, "sliderstyle.css"))
+image = Bonito.Asset(joinpath(@__DIR__, "assets", "julia.png"))
+s = Bonito.get_server();
+
+app = App() do
+    button = Bonito.Button("hi", class="mui-btn mui-btn--primary")
+    slider = Bonito.Slider(1:10, class="slider")
+
+    on(button) do click
+        @show click
+    end
+
+    on(slider) do slidervalue
+        @show slidervalue
+    end
+    link = DOM.a(href="/example1", "GO TO ANOTHER WORLD")
+    return DOM.div(MUI, sliderstyle, link, button, slider, DOM.img(src=image))
+end
+display(app)
+
+md"""
+# Can also use regex here!
+# ctx contains route, match,
+"""
+
+app = App() do
+    color = Observable("red")
+    on(println, color)
+    button = DOM.div("click me", onclick=js"""(e)=> {
+        const color = '#' + ((1<<24)*Math.random() | 0).toString(16)
+        console.log(color)
+        $(color).notify(color)
+    }""")
+    style = map(x-> "color: $(x)", color)
+    return DOM.div(
+        button, DOM.h1("Hello World", style=style)
+    )
+end
+display(app)
+
+Bonito.route!(Bonito.get_server(), "/example1" => app)
+
+app = App() do session::Session
+    slider = Bonito.Slider(1:10, class="slider m-4")
+    squared = map(slider) do slidervalue
+        return slidervalue^2
+    end
+    class = "p-2 rounded border-2 border-gray-600 m-4"
+    v1 = DOM.div(slider.value, class=class)
+    v2 = DOM.div(squared, class=class)
+    dom = DOM.div(Bonito.TailwindCSS, "Hello", slider, sliderstyle, v1, v2)
+    # statemap for static serving
+    # return dom
+    return Bonito.record_states(session, dom)
+end;
+
+export_path = joinpath(@__DIR__, "demo")
+mkdir(export_path)
+routes = Bonito.Routes()
+routes["/"] = app
+Bonito.export_static(export_path, routes)
+
+# Or just `Bonito.export_static("index.html", app)` to export the app to a single file!
+
+# Then one can use liveserver to host the static export:
+using LiveServer
+cd(export_path)
+LiveServer.serve()
+
+================
+File: choicesbox.jl/choicesbox.jl
+================
+using Bonito
+using Observables
+# Example usage function
+
+App() do
+    # sample options
+    fruits = ["Cherry", "Apple", "Banana", "Date", "Elderberry",  "Fig", "Grape"]
+
+    # Configure Choices.js parameters
+    params = ChoicesJSParams(
+        searchPlaceholderValue="Type to search fruits...",
+        itemSelectText= "Press this fruit to select",
+        searchEnabled=true,
+        shouldSort=false,
+        searchResultLimit=3,
+        renderChoiceLimit=10,
+        placeholder = true,
+        placeholderValue = "--"
+    )
+    choicesbox = ChoicesBox(fruits; choicejsparams=params)
+
+    # Display selected value
+    selected_display = map(choicesbox.value) do value
+        "Selected: $value"
+    end
+
+    # Handle value changes
+    on(choicesbox.value) do value
+        @info "ChoicesBox value changed to: $value"
+    end
+    return Card(
+        DOM.div(
+        DOM.h2("ChoicesBox Example"),
+        DOM.p("This box allows you to select from predefined option list:"),
+        choicesbox,
+        DOM.p(selected_display, style="margin-top: 20px; font-weight: bold;");
+        )
+    )
+end
+
+================
+File: editor.jl/editor.jl
+================
+using Bonito
+using Observables
+using Hyperscript
+
+app = App() do session::Session
+    editor = CodeEditor("julia"; initial_source="""1 + 1""")
+    eval_button = Button("eval")
+    output = Observable(DOM.div())
+    on(eval_button) do click
+        src = editor.onchange[]
+        result = eval(Bonito.parseall(src))
+        output[] = DOM.div(result)
+    end
+    return DOM.div(editor, eval_button, output)
+end
+
+================
+File: german_clima.jl/german_clima.jl
+================
+using CSV, Shapefile
+using Bonito, WGLMakie, Markdown
+using Downloads: download
+import Bonito.TailwindDashboard as D
+using GeoInterfaceMakie
+GeoInterfaceMakie.@enable Shapefile.Polygon
+
+read_data(path) = open(path) do io
+    # skip first line since it contains an invalid comment
+    readuntil(io, "\n")
+    CSV.File(io, delim=';')
+end
+
+function normalize_names(x)
+    no_umlaut = replace(x, r"[üöä]" => (x)-> Dict("ü" => "ue", "ö"=>"ae", "ä"=>"oe")[x])
+    bb = replace(no_umlaut, "Brandenburg/Berlin" => "Berlin")
+    if any(y-> occursin(y, bb), ("Hamburg", "Bremen", "Niedersachsen"))
+        return "Niedersachsen"
+    end
+    return bb
+end
+
+data_dir = joinpath(@__DIR__, "data")
+mkdir(data_dir)
+data_temp_path = joinpath(data_dir, "temperature.txt")
+data_prec_path = joinpath(data_dir, "precipitation.txt")
+download("https://opendata.dwd.de/climate_environment/CDC/regional_averages_DE/annual/air_temperature_mean/regional_averages_tm_year.txt", data_temp_path)
+download("https://opendata.dwd.de/climate_environment/CDC/regional_averages_DE/annual/precipitation/regional_averages_rr_year.txt", data_prec_path)
+
+temp_data = read_data(data_temp_path)
+prec_data = read_data(data_prec_path)
+
+url_gadm = "https://biogeo.ucdavis.edu/data/gadm3.6/shp/gadm36_DEU_shp.zip"
+shape_path = joinpath(data_dir, "gadm36_DEU_1.shp")
+shape_zip = joinpath(data_dir, "gadm36_DEU_1.zip")
+download(url_gadm, shape_zip)
+run(`unzip $shape_zip -d $data_dir`)
+tbl_states = collect(Shapefile.Table(shape_path))
+
+states = map(normalize_names, tbl_states.NAME_1)
+states_geom_map = Dict(zip(map(normalize_names, tbl_states.NAME_1), tbl_states.NAME_1))
+states_sym = propertynames(temp_data)[3:end]
+statenames_to_sym = Dict(zip(normalize_names.(string.(states_sym)), states_sym))
+
+states_to_plot = filter(states) do state
+    haskey(statenames_to_sym, state)
+end
+
+function data_extrema(data)
+    combinations = [(s, i) for s in states_to_plot, i in 1:length(data)]
+    return extrema(map(combinations) do (state, idx)
+        return data[idx][statenames_to_sym[state]]
+    end)
+end
+
+function visualize_data(scene, data, cmap, colorrange, s)
+    colormap = to_colormap(cmap)
+    colors = map(s) do idx
+        map(states_to_plot) do state
+            datapoint = data[idx][statenames_to_sym[state]]
+            return Makie.interpolated_getindex(colormap, datapoint, colorrange)
+        end
+    end
+
+    polys = map(states_to_plot) do state
+        idx = findfirst(x-> x.NAME_1 == states_geom_map[state], tbl_states)
+        return tbl_states[idx].geometry
+    end
+    # Plot each state individually, so we can update one color per state
+    for i in 1:length(states_to_plot)
+        poly!(scene, polys[i], color=lift(x-> x[i], colors))
+    end
+    return scene
+end
+
+app = App() do session
+    fig = Figure(resolution=(900, 700))
+    to_plot = (
+        (1, "Temperatur", temp_data, :heat),
+        (2, "Regen", prec_data, :blues))
+    s = Bonito.Slider(1:length(temp_data))
+
+    for (i, title, data, cmap) in to_plot
+        colorrange = data_extrema(data)
+        ax = Axis(fig[1, i]; title=title)
+        hidedecorations!(ax, grid=false)
+        visualize_data(ax, data, cmap, colorrange, s)
+        fig[2, i] = Colorbar(fig, colormap=cmap, limits=colorrange, vertical=false, height=30, labelvisible=false)
+    end
+
+    year = map(idx-> temp_data[idx].Jahr, s)
+
+    markdown = md"""
+    # Durchschnitts Temperatur per Bundesland
+
+    ## Reise vom Jahr 1881 bis 2019
+    $(styled_slider(s, year))
+
+    $(fig)
+
+    [Quelle: Deutscher Wetterdienst](https://opendata.dwd.de/climate_environment/CDC/regional_averages_DE/annual/)
+
+    [Quellcode für Visualisierung](https://github.com/SimonDanisch/Bonito.jl/blob/master/examples/german_clima.jl)
+    """
+
+    dom = DOM.div(Bonito.MarkdownCSS, Bonito.TailwindCSS, Bonito.Styling, markdown)
+    # return dom
+    return Bonito.record_states(session, dom)
+end;
+
+# Either export standalone
+mkpath("./dev/WGLDemos/")
+Bonito.export_static("./dev/WGLDemos/german_heat.html", app)
+
+# Or serve as a website!
+# app = Bonito.Server(app, "0.0.0.0", 80)
+
+================
+File: image_slider.jl/image_slider.jl
+================
+using Bonito, FileIO, Colors, Observables
+using Bonito.DOM
+using Bonito: App
+Bonito.browser_display()
+dir = mktempdir()
+for i in 1:5
+    save(joinpath(dir, "img$i.jpg"), rand(RGB{Colors.N0f8}, 200, 200))
+end
+
+app = App() do
+    files = Bonito.Asset.(joinpath.(dir, filter(x-> endswith(x, ".jpg"), readdir(dir))))
+    slider = Bonito.Slider(1:length(files))
+    image_obs = Observable(first(files))
+    img = DOM.img(src=image_obs, style="height: 200px;")
+    on(slider) do idx
+        image_obs[] = files[idx]
+    end
+    return DOM.div(slider, img)
+end
+
+================
+File: js_dependency.jl/js_dependency.jl
+================
+using Bonito
+using Bonito: onload, @js_str, Session, App
+using Bonito.DOM
+
+using Deno_jll # If you create your own javascript module, you need to include deno!
+
+# First argument: Name of the Javascript module
+# Second argument: Array of dependency. One needs to be the JavaScript file
+# containing the module the others can be css files!
+const JSModule = ES6Module(joinpath(@__DIR__, "JSModule.js"))
+
+app = App() do session::Session
+    hello_div = DOM.div("hello")
+    # now, one can just use the module anywhere:
+    onload(session, hello_div, js"""function (hello_div){
+        $(JSModule).then(Module => {
+            Module.set_global(27398);
+            hello_div.innerText = Module.get_global();
+        })
+    }""")
+    return hello_div
+end
+
+================
+File: JSModule.bundled.js/JSModule.bundled.js
+================
+// deno-fmt-ignore-file
+// deno-lint-ignore-file
+// This code was bundled using `deno bundle` and it's not recommended to edit it manually
+⋮----
+function get_global()
+function set_global(val)
+
+================
+File: JSModule.js/JSModule.js
+================
+export function get_global()
+export function set_global(val)
+
+================
+File: markdown.jl/markdown.jl
+================
+using Markdown
+using Bonito, Observables
+using WGLMakie
+
+app = App() do
+    cmap_button = Button("change colormap")
+    algorithms = ["mip", "iso", "absorption"]
+    algorithm_drop = Dropdown(algorithms)
+
+    data_slider = Slider(LinRange(1f0, 10f0, 100))
+    iso_value = Slider(LinRange(0f0, 1f0, 100))
+    N = 100
+    slice_idx = Slider(1:N)
+
+    signal = map(data_slider.value) do α
+        a = -1; b = 2
+        r = LinRange(-2, 2, N)
+        z = ((x,y) -> x + y).(r, r') ./ 5
+        me = [z .* sin.(α .* (atan.(y ./ x) .+ z.^2 .+ pi .* (x .> 0))) for x=r, y=r, z=r]
+        return me .* (me .> z .* 0.25)
+    end
+
+    slice = map(signal, slice_idx) do x, idx
+        view(x, :, idx, :)
+    end
+
+    fig = Figure(; size=(900, 400))
+
+    vol = volume(fig[1,1], signal; algorithm=map(Symbol, algorithm_drop.value), isovalue=iso_value.value, axis=(;show_axis=false))
+
+    colormaps = collect(Makie.all_gradient_names)
+    cmap = map(cmap_button) do click
+        return colormaps[rand(1:length(colormaps))]
+    end
+
+    heat = heatmap(fig[1, 2], slice, colormap=cmap)
+
+    # Conditionally show ISO value slider only when algorithm is "iso"
+    iso_control = map(algorithm_drop.value) do alg
+        if alg == "iso"
+            return DOM.div("ISO value: ", iso_value)
+        else
+            return DOM.div()
+        end
+    end
+
+    dom = md"""
+    # Interactive 3D Volume Visualization
+
+    This example demonstrates **Bonito.jl**'s ability to combine markdown content with interactive widgets and 3D visualizations using WGLMakie.
+
+    ## About This Demo
+
+    Below you'll find interactive controls that manipulate a 3D volume rendering in real-time. This showcases:
+
+    * Reactive programming with `Observable`s
+    * Integration between markdown and Julia widgets
+    * Real-time 3D visualization with WGLMakie
+    * Clean, styled presentation using Bonito's layout system
+
+    ## Visualization Controls
+
+    Use the controls below to explore the 3D volume data:
+
+    **Data Parameter**: Adjust the mathematical function generating the volume data
+
+    $(DOM.div("Data parameter: ", data_slider))
+
+    **Algorithm**: Choose the volume rendering algorithm
+
+    $(DOM.div("Algorithm: ", algorithm_drop))
+
+    $(iso_control)
+
+    **Y-Slice**: Select which slice to display in the heatmap
+
+    $(DOM.div("Y slice: ", slice_idx))
+
+    **Colormap**: Randomize the heatmap colors
+
+    $(cmap_button)
+
+    ---
+
+    ## The Visualization
+
+    $(fig)
+
+    ---
+
+    ## Markdown Features
+
+    Bonito supports GitHub-flavored Markdown including:
+
+    1. **Formatted text**: *italic*, **bold**, and `inline code`
+    2. **LaTeX equations** via KaTeX
+    3. **Tables** for structured data
+    4. **Embedded widgets** as shown above
+
+    ### LaTeX Support
+
+    Bonito renders beautiful mathematical expressions:
+
+    ```latex
+    \int_{-\infty}^{\infty} e^{-x^2} dx = \sqrt{\pi}
+
+    \mathbf{A} = \begin{pmatrix}
+    a_{11} & a_{12} \\
+    a_{21} & a_{22}
+    \end{pmatrix}
+    ```
+
+    ### Tables
+
+    | Feature        | Status        | Priority |
+    | -------------- |:-------------:| --------:|
+    | 3D Rendering   | ✓ Implemented | High     |
+    | Interactivity  | ✓ Implemented | High     |
+    | Styling        | ✓ Implemented | Medium   |
+
+    > **Note**: This entire page is generated from a single Julia file, combining markdown prose with interactive computational content!
+    """
+    # Create a styled container with max-width and centered content
+    container_style = Styles(
+        "max-width" => "900px",
+        "margin" => "0 auto",
+        "padding" => "2rem",
+        "background-color" => "#ffffff",
+        "box-shadow" => "0 1px 3px rgba(0, 0, 0, 0.1)",
+        "border-radius" => "8px",
+        "line-height" => "1.6"
+    )
+
+    content = DOM.div(Bonito.MarkdownCSS, Bonito.Styling, dom; style=container_style)
+
+    # Wrap in outer container for centering
+    outer_style = Styles(
+        "background-color" => "#f5f5f5",
+        "min-height" => "100vh",
+        "padding" => "2rem 1rem"
+    )
+
+    return DOM.div(content; style=outer_style)
+end
+
+================
+File: oceananigans.jl/oceananigans.jl
+================
+using WGLMakie, Bonito
+using Colors, ImageTransformations, Markdown
+using Bonito: styled_slider
+
+folder = joinpath(@__DIR__, "simulation")
+
+volume_frames = map(readdir(folder)) do file
+    open(joinpath(folder, file)) do io
+        data = Array{Float32, 3}(undef, 130, 258, 65)
+        read!(io, data)
+        return data
+    end
+end
+
+struct Flip <: Bonito.WidgetsBase.AbstractWidget{Bool}
+    label::String
+    value::Observable{Bool}
+end
+Flip(label) = Flip(label, Observable(false))
+# Implement interface for Flip to work with offline mode
+Bonito.is_widget(::Flip) = true
+Bonito.value_range(flip::Flip) = (true, false)
+Bonito.update_value!(flip::Flip, value) = (flip.value[] = value)
+
+function Bonito.jsrender(flip::Flip)
+    return DOM.input(
+        type = "button",
+        value = flip.label,
+        onclick = js"{
+            const value = this.last_value;
+            $(flip.value).notify(!value);
+            this.last_value = !value;
+        }";
+        class="p-1 rounded m-2"
+    )
+end
+
+function handler(s, r)
+    sl = Bonito.Slider(1:64)
+    absorption = Bonito.Slider(range(1f0, stop=10f0, step=0.1))
+    flip_colormap = Flip("flip colormap")
+    absorption.value[] = 5
+    v = map(sl) do idx
+        # make volumes a bit smaller!
+        restrict(volume_frames[idx])
+    end
+    clims = (8, 12)
+    cmapa = RGBAf.(to_colormap(:thermal), 1.0)
+    cmap1 = vcat(fill(RGBAf(0,0,0,0), 20), cmapa)
+    cmap2 = vcat(cmapa, fill(RGBAf(0,0,0,0), 20))
+    cmap = map(flip_colormap) do x
+        return x ? copy(cmap1) : copy(cmap2)
+    end
+
+    scene = volume(v;
+        colorrange=clims, algorithm=:absorption, absorption=absorption, colormap=cmap, show_axis=false,
+        resolution=(600, 600))
+
+    markdown = md"""
+
+    # Ocean Simulation
+
+    Simulation of instability of a horizontal density gradient in a rotating channel using 256x512x128 grid points running on a GPU. A similar process called baroclinic instability acting on basin-scale temperature gradients fills the oceans with eddies, especially in regions with large temperature gradients. These eddies are the primary way the ocean transports heat, carbon dioxide, organic matter, and nutrients on a large scale.
+
+    Simulation created with [Oceananigans.jl](https://github.com/CliMA/Oceananigans.jl/) which is part of the [CliMA](https://github.com/CliMA) project.
+
+    [source code](https://github.com/SimonDanisch/Bonito.jl/blob/master/examples/oceananigans.jl)
+
+    ---
+
+    absorption: $(styled_slider(absorption, absorption.value))
+    time: $(styled_slider(sl, sl.value))
+
+    $(flip_colormap)
+
+    $(scene)
+
+    """
+    dom = DOM.div(Bonito.MarkdownCSS, Bonito.Styling, Bonito.TailwindCSS, markdown)
+    # return dom
+    return Bonito.record_state_map(s, dom).dom
+end
+
+# Either serve
+# app = Bonito.Server(handler, "0.0.0.0", 8083)
+
+export_path = "dev/WGLDemos/oceananigans/"
+# or export to e.g. github IO
+Bonito.export_standalone(handler, export_path, clear_folder=true)
+
+================
+File: overloading-connection.jl/overloading-connection.jl
+================
+using HTTP, Bonito, Observables
+using HTTP.WebSockets: WebSocket, isclosed, receive, send
+
+## Overloading Connection
+mutable struct WSConnection <: Bonito.FrontendConnection
+    socket::Union{Nothing, WebSocket}
+end
+
+# Overload basic function
+function Base.write(ws::WSConnection, binary)
+    HTTP.WebSockets.send(ws.socket, binary)
+end
+function Base.close(ws::WSConnection)
+    close(ws.socket)
+end
+Base.isopen(ws::WSConnection) = !isnothing(ws.socket) && !isclosed(ws.socket)
+
+# Setup the julia side of things
+function Bonito.setup_connection(session::Session{WSConnection})
+    connection = session.connection
+    # TODO, just insert a route, or close/reopen webserver
+    port = 8083
+    url = "127.0.0.1"
+    server = WebSockets.listen!(url, port) do websocket
+        connection.socket = websocket # once we get the connection, set it!
+        while !isclosed(websocket)
+            bytes = receive(websocket)
+            # process_message works with the bytes serialized by the frontend :)
+            Bonito.process_message(session, bytes)
+        end
+    end
+
+    # Return the javascript you need to set things up
+    return js"""
+    // Javascript needed to connect to
+    const websocket = new WebSocket($("ws://$(url):$(port)"))
+    websocket.binaryType = "arraybuffer";
+    websocket.onopen = function () {
+        console.log("CONNECTED!!");
+        websocket.onmessage = function (evt) {
+            new Promise(resolve => {
+                const binary = new Uint8Array(evt.data);
+                Bonito.process_message(Bonito.decode_binary(binary, $(session.compression_enabled)));
+                resolve()
+            })
+        };
+        Bonito.on_connection_open((binary_data) => {
+            websocket.send(binary_data) // we serialize everything to binary (Uint8Array)
+        });
+    };
+    """
+end
+
+# Register your connection
+Bonito.register_connection!(WSConnection) do
+    # This should REALLY be conditional, otherwise
+    # you'll force every package to use your connection per default!
+    # See documention of register_connection!
+    return WSConnection(nothing)
+end
+
+
+## Overloading Server
+
+struct FileServer <: Bonito.AbstractAssetServer
+end
+
+# Nothing really to setup, but if you use e.g. HTTP, this would be the place to insert routes etc
+# Have a look at asset-servers/http.jl for more infos about how to implement an HTTP based asset server
+Bonito.setup_asset_server(::FileServer) = nothing
+
+function Bonito.url(::FileServer, asset::Bonito.Asset)
+    return "file:///" * Bonito.local_path(asset)
+end
+
+# Register your file server
+Bonito.register_asset_server!(FileServer) do
+    return FileServer()
+end
+
+# Now, any created session should use your WSConnection!
+x = Session()
+@assert x.connection isa WSConnection
+@assert x.asset_server isa FileServer
+
+Bonito.browser_display() # Show the app in the browser, since e.g. plotpane won't allow to load from file urls
+color = Observable("red")
+color_css = map(x-> "color: $(x)", color)
+App() do session::Session
+    Bonito.evaljs(session, js"console.log('hi from JS')")
+    return DOM.div("hii"; style=color_css)
+end
+
+color[] = "green" # Tadaa, your first div update with your own connection :)
+
+================
+File: serve.jl/serve.jl
+================
+using Bonito, Observables
+using Bonito: @js_str, onjs, Button, TextField, Slider, linkjs, Session, App
+using Bonito.DOM
+using Hyperscript
+
+app = App() do session::Session
+    s1 = Slider(1:100)
+    s2 = Slider(1:100)
+    b = Button("hi")
+    t = TextField("enter your text")
+    on(println, s1.value)
+    linkjs(session, s1.index, s2.index)
+    test = [1,2,3]
+    onjs(session, s1.value, js"(v)=> console.log($test)")
+    on(t) do text
+        println(text)
+    end
+    return DOM.div(s1, s2, b, t)
+end
+
+if isdefined(Main, :server)
+    close(server)
+end
+
+server = Bonito.Server(app, "127.0.0.1", 8081)
+# Important Note: You might want to set the keyword argument `proxy_url` above in case
+# you have a reverse proxy (like nginx or caddy) in front of the Bonito instance.
+Bonito.HTTPServer.start(server)
+# Bonito.HTTPServer.route!(server, "/" => app) # Overwrite app after changing it
+wait(server)
+
+================
+File: sliderstyle.css/sliderstyle.css
+================
+.slider {
+.slider::-webkit-slider-thumb {
+.slider::-moz-range-thumb {
+
+================
+File: subsession_integration.jl/subsession_integration.jl
+================
+using HTTP
+using Bonito: App, Styles, Observable
+using Bonito.DOM
+using Random
+using Colors
+using Base.Threads: @spawn
+using Dates: Dates
+
+
+function html(app; kwargs...)
+    io = IOBuffer()
+    show_html(io, app; kwargs...)
+    take!(io)
+end
+
+function main()
+    # start a blocking server
+    session_root_storage = Dict()
+    rng = Random.default_rng()
+    HTTP.listen() do http::HTTP.Stream
+        HTTP.setstatus(http, 200)
+        HTTP.startwrite(http)
+        req_uri = HTTP.URI(http.message.target)
+        if req_uri.path == "/fragment"
+            params = HTTP.queryparams(req_uri)
+            sid = params["sid"]
+            session = session_root_storage[params["sid"]]
+            color = rand(RGB{Float64})
+            css = Styles(
+                "background-color" => color,
+            )
+            app = App() do
+                date_obs::Observable{String} = Observable("unset")
+                @async begin
+                    while true
+                        date_obs[] = string(Dates.now())
+                        sleep(1)
+                    end
+                end
+                DOM.div(map(date -> "date: $(date); sid: $(sid)", date_obs), style=css)
+            end
+            app_html = html(app; parent=session)
+            write(http, app_html)
+        else
+            root_app = App(_ -> DOM.div(""))
+            app_html = html(root_app)
+            session = root_app.session[]
+            session_root_storage[session.id] = session
+            write(http, "<html><body>")
+            write(http, "<script src=\"https://unpkg.com/htmx.org@2.0.2\"></script>")
+            write(http, "<h1>fragment insertion</h1>")
+            write(http, "<button hx-get=\"/fragment?sid=$(session.id)\" hx-target=\"#results\">Click Me</button>")
+            write(http, "<div id=\"results\">")
+            write(http, app_html)
+            write(http, "</div>")
+            write(http, "</body></html>")
+        end
+    end
+end
+
+if abspath(PROGRAM_FILE) == @__FILE__
+    main()
+end
+
+================
+File: threejs.jl/threejs.jl
+================
+using Bonito
+
+# Javascript & CSS dependencies can be declared locally and
+# freely interpolated in the DOM / js string, and will make sure it loads
+# Note, that they will be a `Promise` though, so to use them you need to call `module.then(module=> ...)`.
+const THREE = ES6Module("https://cdn.esm.sh/v66/three@0.136/es2021/three.js")
+
+app = App() do session, request
+    width = 500; height = 500
+    dom = DOM.div(width = width, height = height)
+    Bonito.onload(session, dom, js"""
+        function (container){
+            $(THREE).then(THREE=> {
+                var renderer = new THREE.WebGLRenderer({antialias: true});
+                renderer.setSize($width, $height);
+                renderer.setClearColor("#ffffff");
+                container.appendChild(renderer.domElement);
+                var scene = new THREE.Scene();
+                var camera = new THREE.PerspectiveCamera(75, $width / $height, 0.1, 1000);
+                camera.position.z = 4;
+                var ambientLight = new THREE.AmbientLight(0xcccccc, 0.4);
+                scene.add(ambientLight);
+                var pointLight = new THREE.PointLight(0xffffff, 0.8);
+                camera.add(pointLight);
+                scene.add(camera);
+                var geometry = new THREE.SphereGeometry(1.0, 32, 32);
+                var material = new THREE.MeshPhongMaterial({color: 0xffff00});
+                var sphere = new THREE.Mesh(geometry, material);
+                scene.add(sphere);
+                renderer.render(scene, camera);
+            })
+        }
+    """)
+    return dom
+end
+
+================
+File: wglmakie.jl/wglmakie.jl
+================
+using Bonito, WGLMakie
+using GeometryBasics
+using FileIO
+using Bonito: @js_str, onjs, App, Slider
+using Bonito.DOM
+Bonito.browser_display()
+
+set_theme!(size=(1200, 800))
+
+hbox(args...) = DOM.div(args...)
+vbox(args...) = DOM.div(args...)
+
+app = App() do
+    return hbox(
+        vbox(
+            scatter(1:4, color=1:4),
+            scatter(1:4, color=rand(RGBAf, 4)),
+            scatter(1:4, color=rand(RGBf, 4)),
+            scatter(1:4, color=:red),
+            scatter(1:4)
+        ),
+        vbox(
+            scatter(1:4, marker='☼'),
+            scatter(1:4, marker=['☼', '◒', '◑', '◐']),
+            scatter(1:4, marker=rand(RGBf, 10, 10), markersize=20),
+            scatter(1:4, markersize=20),
+            scatter(1:4, markersize=20, markerspace=:pixel),
+            scatter(1:4, markersize=LinRange(20, 60, 4), markerspace=:pixel),
+            scatter(1:4, marker='▲', markersize=0.3, markerspace=:data, rotation=LinRange(0, pi, 4)),
+        )
+    )
+end
+
+app = App() do
+    return DOM.div(
+        meshscatter(1:4, color=1:4),
+        meshscatter(1:4, color=rand(RGBAf, 4)),
+        meshscatter(1:4, color=rand(RGBf, 4)),
+        meshscatter(1:4, color=:red),
+        meshscatter(rand(Point3f, 10), color=rand(RGBf, 10)),
+        meshscatter(rand(Point3f, 10), marker=Pyramid(Point3f(0), 1f0, 1f0)),
+    )
+end
+
+
+
+app = App() do
+    x = Point2f[(1, 1), (2, 2), (3, 2), (4, 4)]
+    points = connect(x, LineFace{Int}[(1, 2), (2, 3), (3, 4)])
+    return DOM.div(
+        linesegments(1:4),
+        linesegments(1:4, linestyle=:dot),
+        linesegments(1:4, linestyle=[0.0, 1.0, 2.0, 3.0, 4.0]),
+        linesegments(1:4, color=1:4),
+        linesegments(1:4, color=rand(RGBf, 4), linewidth=10),
+        linesegments(points)
+    )
+end
+
+
+app = App() do
+    x = Point2f[(1, 1), (2, 2), (3, 2), (4, 4)]
+    points = connect(x, LineFace{Int}[(1, 2), (2, 3), (3, 4)])
+    return DOM.div(
+        lines(1:4),
+        lines(1:4, linestyle=:dot),
+        lines(1:4, linestyle=[0.0, 1.0, 2.0, 3.0, 4.0]),
+        lines(1:4, color=1:4),
+        lines(1:4, color=rand(RGBf, 4), linewidth=10),
+        lines(points)
+    )
+end
+
+app = App() do
+    data = Makie.peaks()
+    return hbox(vbox(
+        surface(-10..10, -10..10, data, axis=(; show_axis=false)),
+        surface(-10..10, -10..10, data, color=rand(size(data)...))),
+        vbox(surface(-10..10, -10..10, data, color=rand(RGBf, size(data)...)),
+        surface(-10..10, -10..10, data, colormap=:magma, colorrange=(0.0, 2.0)),
+    ))
+end
+
+app = App() do
+    return vbox(
+        image(rand(10, 10)),
+        heatmap(rand(10, 10)),
+        image(rand(RGBAf, 10, 10)),
+        heatmap(rand(RGBAf, 10, 10)),
+        image(rand(RGBf, 10, 10)),
+        heatmap(rand(RGBf, 10, 10)),
+    )
+end
+
+using WGLMakie: volume
+
+app = App() do
+    return hbox(vbox(
+        volume(rand(4, 4, 4), isovalue=0.5, isorange=0.01, algorithm=:iso),
+        volume(rand(4, 4, 4), algorithm=:mip),
+        volume(1..2, -1..1, -3..(-2), rand(4, 4, 4), algorithm=:absorption)),
+        vbox(
+        volume(rand(4, 4, 4), algorithm=Int32(5)),
+        volume(rand(RGBAf, 4, 4, 4), algorithm=:absorptionrgba),
+        contour(rand(4, 4, 4)),
+    ))
+end
+
+app = App() do
+    cat = FileIO.load(Makie.assetpath("cat.obj"))
+    tex = FileIO.load(Makie.assetpath("diffusemap.png"))
+    return hbox(vbox(
+        Makie.mesh(Circle(Point2f(0), 1f0)),
+        Makie.poly(decompose(Point2f, Circle(Point2f(0), 1f0)))), vbox(
+        Makie.mesh(cat, color=tex),
+        Makie.mesh([(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)]; color=[:red, :green, :blue], shading=false)
+    ))
+end
+
+function n_times(f, n=10, interval=1)
+    obs = Observable(f(1))
+    @async for i in 2:n
+        try
+            obs[] = f(i)
+            sleep(interval)
+        catch e
+            @warn "Error!" exception=CapturedException(e, Base.catch_backtrace())
+        end
+    end
+    return obs
+end
+
+app = App() do
+    s1 = text(n_times(i-> map(j-> ("$j", Point2f(j*30, 0)), 1:i)), fontsize=20,
+                      axis=(;limits=(30, 320, -5, 5)))
+    s2 = scatter(n_times(i-> Point2f.((1:i).*30, 0)), markersize=20,
+                  axis=(;limits=(30, 320, -5, 5)))
+    s3 = linesegments(n_times(i-> Point2f.((2:2:2i).*30, 0)), axis=(;limits=(30, 620, -5, 5)))
+    s4 = lines(n_times(i-> Point2f.((2:2:2i).*30, 0)), axis=(;limits=(30, 620, -5, 5)))
+    return hbox(s1, s2, s3, s4)
+end
+
+app = App() do
+    outer_padding = 30
+    fig = Figure(
+        figure_padding =outer_padding, resolution=(1200, 700),
+        backgroundcolor = RGBf(0.98, 0.98, 0.98)
+    )
+    ax1 = Axis(fig[1,1], title="Sine")
+    xx = 0:0.2:4pi
+    line1 = lines!(ax1, sin.(xx), xx, color=:red)
+    scat1 = scatter!(ax1, sin.(xx) .+ 0.2 .* randn.(), xx,
+        color=(:red, 0.5), markersize=15, marker='■')
+    return fig
+end
+
+app = App() do
+    sl = Bonito.Slider(1:10)
+    rect = Rect2f(0, -5, 1025, 10)
+    chars = [collect('a':'z'); 0:9;]
+    char2 = [collect('A':'Z'); 0:9;]
+    tex1 = map(x->map(j-> ("$(chars[rand(1:length(chars))])", Point2f(j*30, 0)), 1:36), sl)
+    on(println, tex1)
+    tex2 = map(x->map(j-> ("$(char2[rand(1:length(char2))])", Point2f(j*30, 1)), 1:36), sl)
+    fig, ax, pl = text(tex1, fontsize=20)
+    text!(ax, tex2; fontsize=20)
+    return DOM.div(sl, fig)
+end
+
+
+
+
+
+================================================================
+End of Codebase
+================================================================

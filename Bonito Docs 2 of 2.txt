@@ -1,0 +1,1299 @@
+
+================
+File: interactions.md/interactions.md
+================
+# Interactions
+
+Animations in Bonito are done via Observables.jl, much like it's the case for Makie.jl, so the same docs apply:
+
+* [observables](https://docs.makie.org/stable/documentation/nodes/index.html)
+* [animation](https://docs.makie.org/stable/documentation/animation/index.html)
+
+But lets quickly get started with a Bonito specific example:
+
+```@setup 1
+using Bonito
+Page()
+```
+
+```@example 1
+App() do session
+    s = Slider(1:3)
+    value = map(s.value) do x
+        return x ^ 2
+    end
+    # record_states captures widget interactions for static HTML export
+    # This allows the slider to remain interactive even without a Julia backend!
+    return Bonito.record_states(session, DOM.div(s, value))
+end
+```
+
+The `s.value` is an `Observable` which can be `mapp'ed` to take on new values, and one can insert observables as an input to `DOM.tag` or as any attribute.
+The value of the `observable` will be rendered via `jssrender(session, observable[])`, and then updated whenever the value changes.
+So anything that supports being inserted into the `DOM` can be inside an observable, and the fallback is to use the display system (so plots etc. work as well).
+This way, one can also return `DOM` elements as the result of an observable:
+
+```@example 1
+App() do session
+    s = Slider(1:3)
+    # use map!(result_observable, ...)
+    # To use any as the result type, otherwise you can't return
+    # different types from the map callback
+    value = map!(Observable{Any}(), s.value) do x
+        if x == 1
+            return DOM.h1("hello from slider: $(x)")
+        elseif x == 2
+            return DOM.img(src="https://docs.makie.org/stable/logo.svg", width="200px")
+        else
+            return x^2
+        end
+    end
+    return Bonito.record_states(session, DOM.div(s, value))
+end
+```
+
+In other words, the whole app can just be one big observable:
+
+```@example 1
+import Bonito.TailwindDashboard as D
+App() do session
+    s = D.Slider("Slider: ", 1:3)
+    checkbox = D.Checkbox("Chose:", true)
+    menu = D.Dropdown("Menu: ", [sin, tan, cos])
+    dependent = map(checkbox.widget.value, s.widget.value, menu.widget.value) do args...
+        D.FlexCol(DOM.div.(args)...)
+    end
+    return Bonito.record_states(session, D.FlexRow(
+        D.Card(D.FlexCol(checkbox, s, menu)),
+        D.Card(D.FlexCol(D.Title("Independent (supported)"), checkbox.value, s.value, menu.value)),
+        D.Card(D.FlexCol(D.Title("Dependent (not supported)"), dependent))
+    ))
+end
+```
+
+## Understanding `record_states` Limitations
+
+The `record_states` function is designed to capture widget interactions for static HTML export. However, it has an important limitation: **only independent widget states are recorded**.
+
+In the example above:
+- **Independent widgets work**: The slider, checkbox, and dropdown values update correctly because they're displayed directly
+- **Dependent observables don't work**: The `dependent` observable that combines multiple widget values won't update correctly in the exported HTML
+
+This happens because `record_states` records each widget's states independently to avoid exponential growth in file size. For complex interactions, consider using JavaScript-based solutions (shown later in this guide).
+
+## Creating Interactive Examples
+
+Despite these limitations, you can still create engaging interactive examples:
+
+```@example 1
+import Bonito.TailwindDashboard as D
+
+function create_svg(sl_nsamples, sl_sample_step, sl_phase, sl_radii, color)
+    width, height = 900, 300
+    cxs_unscaled = [i*sl_sample_step + sl_phase for i in 1:sl_nsamples]
+    cys = sin.(cxs_unscaled) .* height/3 .+ height/2
+    cxs = cxs_unscaled .* width/4pi
+    rr = sl_radii
+    # DOM.div/svg/etc is just a convenience in Bonito for using Hyperscript, but circle isn't wrapped like that yet
+    geom = [SVG.circle(cx=cxs[i], cy=cys[i], r=rr, fill=color(i)) for i in 1:sl_nsamples[]]
+    return SVG.svg(SVG.g(geom...);
+        width=width, height=height
+    )
+end
+
+app = App() do session
+    colors = ["black", "gray", "silver", "maroon", "red", "olive", "yellow", "green", "lime", "teal", "aqua", "navy", "blue", "purple", "fuchsia"]
+    color(i) = colors[i%length(colors)+1]
+    sl_nsamples = D.Slider("nsamples", 1:200, value=100)
+    sl_sample_step = D.Slider("sample step", 0.01:0.01:1.0, value=0.1)
+    sl_phase = D.Slider("phase", 0.0:0.1:6.0, value=0.0)
+    sl_radii = D.Slider("radii", 0.1:0.1:60, value=10.0)
+    svg = map(create_svg, sl_nsamples.value, sl_sample_step.value, sl_phase.value, sl_radii.value, color)
+    return DOM.div(D.FlexRow(D.FlexCol(sl_nsamples, sl_sample_step, sl_phase, sl_radii), svg))
+end
+```
+
+As you notice, when exporting this example to the docs which get statically hosted, all interactions requiring Julia cease to exist.
+One way to create interactive examples that stay active is to move the parts that need Julia to Javascript:
+
+```@example 1
+app = App() do session
+    colors = ["black", "gray", "silver", "maroon", "red", "olive", "yellow", "green", "lime", "teal", "aqua", "navy", "blue", "purple", "fuchsia"]
+    nsamples = D.Slider("nsamples", 1:200, value=100)
+    nsamples.widget[] = 100
+    sample_step = D.Slider("sample step", 0.01:0.01:1.0, value=0.1)
+    sample_step.widget[] = 0.1
+    phase = D.Slider("phase", 0.0:0.1:6.0, value=0.0)
+    radii = D.Slider("radii", 0.1:0.1:60, value=10.0)
+    radii.widget[] = 10
+    svg = DOM.div()
+    evaljs(session, js"""
+        const [width, height] = [900, 300]
+        const colors = $(colors)
+        const observables = $([nsamples.value, sample_step.value, phase.value, radii.value])
+        function update_svg(args) {
+            const [nsamples, sample_step, phase, radii] = args;
+            const svg = (tag, attr) => {
+                const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+                for (const key in attr) {
+                    el.setAttributeNS(null, key, attr[key]);
+                }
+                return el
+            }
+            const color = (i) => colors[i % colors.length]
+            const svg_node = svg('svg', {width: width, height: height});
+            for (let i=0; i<nsamples; i++) {
+                const cxs_unscaled = (i + 1) * sample_step + phase;
+                const cys = Math.sin(cxs_unscaled) * (height / 3.0) + (height / 2.0);
+                const cxs = cxs_unscaled * width / (4 * Math.PI);
+                const circle = svg('circle', {cx: cxs, cy: cys, r: radii, fill: color(i)});
+                svg_node.appendChild(circle);
+            }
+            $(svg).replaceChildren(svg_node);
+        }
+        Bonito.onany(observables, update_svg)
+        update_svg(observables.map(x=> x.value))
+        """)
+    return DOM.div(D.FlexRow(D.FlexCol(nsamples, sample_step, phase, radii), svg))
+end
+```
+
+This works, because the Javascript side of Bonito, will still update the observables in Javascript (which are mirrored from Julia), and therefore keep working without a running Julia process.
+You can use `js_observable.on(value=> ....)` and `Bonito.onany(array_of_js_observables, values=> ...)` to create interactions, pretty similar to how you would work with Observables in Julia.
+
+================
+File: javascript-libraries.md/javascript-libraries.md
+================
+# Javascript
+
+## Wrapping Javascript Libraries
+
+```@setup 1
+using Bonito
+Bonito.Page()
+```
+
+```@example 1
+leafletjs = Bonito.ES6Module("https://esm.sh/v133/leaflet@1.9.4/es2022/leaflet.mjs")
+leafletcss = Bonito.Asset("https://unpkg.com/leaflet@1.9.4/dist/leaflet.css")
+struct LeafletMap
+    position::NTuple{2,Float64}
+    zoom::Int
+end
+
+function Bonito.jsrender(session::Session, map::LeafletMap)
+
+    map_div = DOM.div(id="map"; style="height: 500px;")
+
+    return Bonito.jsrender(session, DOM.div(
+        leafletcss,
+        leafletjs,
+        map_div,
+        js"""
+            $(leafletjs).then(L=> {
+                const map = L.map('map').setView($(map.position), $(map.zoom));
+                L.tileLayer(
+                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                    attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                }).addTo(map);
+            })
+
+        """
+    ))
+end
+
+
+App() do
+    return LeafletMap((51.505, -0.09), 13)
+end
+```
+
+================
+File: layouting.md/layouting.md
+================
+# Layouting
+
+The main layouting primitive Bonito offers is `Grid`, `Column` and `Row`.
+They are all based on css `display: grid` and Bonito offers a small convenience wrapper around it.
+
+We recommend reading through the great introduction to Styles grids by Josh Comeau: [interactive guide to grid](https://www.joshwcomeau.com/css/interactive-guide-to-grid), for a better understanding of how grids work. It's recommended to read this before following this tutorial, since the examples are styled much nicer and explain everything in much greater detail.
+
+To easier apply the tutorial to Bonito, we ported all the examples of the tutorial, while only describing them with the bare minimum. To get the full picture, please refer to the linked, original tutorial!
+
+Let's start with the docstring for `Grid`:
+
+```@docs
+Grid
+```
+
+It pretty much just sets the css attributes to some defaults, but everything can be overwritten or extended by passing your own `style=Styles(...)` object.
+All Styles objects inside one App will be merged into a single stylesheet, so using many grids with the same keyword arguments will only generate one entry into the global stylesheet. You can read more about this in the styling section.
+
+There's also `Row` and `Col` which uses `Grid` under the hood:
+
+```@docs
+Row
+Col
+```
+
+```@setup 1
+using Bonito
+Page()
+```
+
+## Implicit Grids
+
+If we don't specify any attributes for the `Grid`, the default will be one dynamic column, where every item gets their own row:
+
+```@example 1
+
+
+DemoCard(content=DOM.div(); style=Styles(), attributes...) = Card(content; backgroundcolor=:silver, border_radius="2px", style=Styles(style, "color" => :white),attributes...)
+
+
+App() do sess
+    s = Bonito.Slider(1:5)
+    cards = map(s.value) do n
+        cards = [DemoCard(height="50px", width="300px") for i in 1:n]
+        return Grid(cards;)
+    end
+    return Bonito.record_states(sess, Grid(s, cards))
+end
+```
+
+If we specify a height, while not specifying a height for the elements, the space will be partitioned for the n children:
+
+```@example 1
+App() do sess
+    s = Bonito.Slider(1:5)
+    cards = map(s.value) do n
+        cards = [DemoCard(width="300px") for i in 1:n]
+        Grid(cards; height="300px")
+    end
+    return Bonito.record_states(sess, Grid(s, cards))
+end
+```
+
+To introduce new columns, we can specify a width for each column via the `column` keyword, which supports any css unit:
+
+```@example 1
+App() do
+    grid = Grid(DemoCard(), DemoCard();
+        height="300px", columns="25% 75%")
+    return grid
+end
+```
+
+Grid also introduced a new css unit namely `fr`, which represents the fraction of the leftover space in the grid container.
+
+To see what that means, the below example shows how the percent based unit will shrink proportionally, while `fr` divides the space more evenly and can take the size of the content into it's constraint solver:
+
+```@example 1
+App() do sess
+    container_width = Bonito.Slider(5:0.1:100)
+    container_width[] = 100
+    imstyle = Styles(
+        "display" => :block, "position" => :relative, "width" => "100px",
+        "max-width" => :none # needs to be set so it's not overwritten by others
+    )
+    img = DOM.img(; src="https://docs.makie.org/stable/logo.svg", style=imstyle)
+    style = Styles("position" => :relative, "display" => :flex, "justify-content" => :center, "align-items" => :center)
+
+
+    function example_grid(cols)
+        grid = Grid(DemoCard(img; style=style), DemoCard(DOM.div(); style=style); columns=cols)
+        container = DOM.div(grid; style=Styles("height" => "200px", "width" => "500px"))
+        return Grid(container; rows="1fr", justify_content="center"), container
+    end
+    pgrid, p1 = example_grid("25% 75%")
+    frgrid, p2 = example_grid("1fr 3fr")
+    grid_percent = DOM.div(Grid(pgrid; rows="1fr"))
+    grid_fr = DOM.div(Grid(frgrid; rows="1fr"))
+
+
+    onjs(sess, container_width.value, js"w=> {$(p1).style.width = (5 * w) + 'px';}")
+    onjs(sess, container_width.value, js"w=> {$(p2).style.width = (5 * w) + 'px';}")
+    title_percent = DOM.h2("Grid(...; columns=\"25% 75%\")")
+    title_fr = DOM.h2("Grid(...; columns=\"1fr 3fr\")")
+    return Grid(container_width, title_percent, grid_percent, title_fr, grid_fr; columns="1fr")
+end
+```
+
+Now, what happens if we add more then 2 items to a Grid with 2 columns?
+
+```@example 1
+# Little helper to create a Card with centered content
+centered(c; style=Styles(), kw...) = DemoCard(Centered(DOM.h4(c; style=Styles("color" => :white))); style=style, kw...)
+
+
+App() do
+    cards = [centered(i) for i in 1:3]
+    grid = Grid(cards...; columns="1fr 3fr")
+    return DOM.div(grid; style=Styles("margin" => "20px"))
+end
+```
+
+Specifying the size of the rows works exactly the same as with `columns`:
+
+```@example 1
+App() do
+    cards = [centered(i) for i in 1:4]
+    grid = Grid(cards...; columns="1fr 3fr", rows="5rem 1fr")
+    return DOM.div(grid; style=Styles("width" => "400px", "height" => "300px", "margin" => "20px"))
+end
+```
+
+Now, if we want to do something with lots of rows/columns, e.g. a calendar, it may get tiring to write those out, which is why css offers the `repeat` function:
+
+```@example 1
+App() do
+    cards = [centered(i) for i in 1:31]
+    grid = Grid(cards...; columns="repeat(7, 1fr)")
+    return DOM.div(grid; style=Styles("width" => "400px", "margin" => "5px"))
+end
+```
+
+## Assigning children
+
+Children can be assigned slots in the layout explicitly, and it's also possible to assign them to multiple slots.
+The css syntax for this is:
+
+```julia
+start_column = 1
+end_column = 3
+start_row = 1
+end_row = 3
+
+
+style = Styles(
+    "grid-column" => "$start_column / $end_column",
+    "grid-row" => "$start_row / $end_row"
+)
+child = DOM.div(style=style) # assign child from slot 1-2
+```
+
+To illustrate how this works, here is an interactive app where you can select the slots in the grid, and see the corresponding grid/column assignments:
+
+```@example 1
+function centered2d(i, j;)
+    return Card(Centered("($i, $j)"; dataCol="$i,$j", style=Styles("user-select" => :none)))
+end
+
+App() do
+    cards = [centered2d(i, j) for i in 1:4 for j in 1:4]
+
+
+    hover_style = Styles(
+        "background-color" => :blue,
+        "opacity" => 0.2,
+        "z-index" => 1,
+        "display" => :none,
+        "user-select" => :none,
+    )
+
+
+    hover = DOM.div(; style=hover_style)
+
+
+    grid_style = Styles("position" => :absolute, "top" => 0, "left" => 0)
+    size = "300px"
+    background_grid = Grid(cards...; columns="repeat(4, 1fr)", gap="0px",
+        style=grid_style, height=size, width=size)
+
+
+    rows = [DOM.div() for i in 1:15]
+
+
+    selected_grid = Grid(hover, rows...; columns="repeat(4, 1fr)", gap="0px",
+        style=grid_style, height=size, width=size)
+
+
+    style_display = centered("Styles(...)")
+
+
+    hover_js = js"""
+        const hover = $(hover);
+        const grid = $(selected_grid);
+        const style_display = $(style_display);
+        const h2_node = style_display.children[0].children[0];
+
+
+        let is_dragging = false;
+        let start_position = null;
+        function get_element(e) {
+            const elements = document.elementsFromPoint(e.clientX, e.clientY);
+            for (let i = 0; i < elements.length; i++) {
+                const element = elements[i];
+                if (element.getAttribute('data-col')) {
+                    return element;
+                }
+            }
+            return
+        }
+
+
+        function handle_click(current) {
+            // Check if the current element is a child of the container
+            const index = current.getAttribute('data-col')
+            if (index) {
+                const start = start_position.split(",").map(x=> parseInt(x))
+                const end = index.split(",").map(x=> parseInt(x))
+
+
+                const [start_row, end_row] = [start[0], end[0]].sort()
+                const [start_col, end_col] = [start[1], end[1]].sort()
+                const row = (start_row) + " / " + (end_row + 1)
+                const col = (start_col) + " / " + (end_col + 1)
+                hover.style["grid-row"] = row
+                hover.style["grid-column"] = col
+                const nelems = 16 - ((end_row - start_row+ 1) * (end_col - start_col+ 1))
+                for (let i = 0; i < grid.children.length; i++) {
+                    console.log(i)
+                    const child = grid.children[i];
+                    if (child == hover) {
+                        continue
+                    }
+                    child.style.display = nelems >= i ? "block" : "none";
+                }
+
+
+                h2_node.innerText = 'Styles(\n\"grid-row\" => \"' + row + '\",\n \"grid-column\" => \"' + col + '\"\n)';
+            }
+        }
+
+
+        grid.addEventListener('mousedown', (e) => {
+            if (!hover) {
+                return
+            }
+            is_dragging = true;
+            const current = get_element(e);
+            const index = current.getAttribute('data-col')
+            if (!index) {
+                return;
+            }
+            start_position = index
+            hover.style.display = "block"; // unhide hover element
+            handle_click(current);
+        });
+
+
+        grid.addEventListener('mousemove', (e) => {
+            if (!is_dragging) return;
+            const current = get_element(e);
+            handle_click(current);
+        });
+
+
+        document.addEventListener('mouseup', () => {
+            is_dragging = false;
+        });
+
+
+    """
+    grids = DOM.div(background_grid, selected_grid, hover_js; style=Styles("position" => :relative, "height" => size))
+
+
+    return Grid(style_display, grids; columns="1fr 2fr", width="100%")
+end
+```
+
+## Grid areas
+
+We can now easily create complex layouts like this:
+
+```@example 1
+App() do
+
+
+    sidebar = DemoCard(
+        "SIDEBAR",
+        style = Styles(
+            "grid-column" =>  "1",
+            "grid-row" =>  "1 / 3",
+        )
+    )
+
+
+    header = DemoCard(
+        "HEADER",
+        style = Styles(
+            "grid-column" =>  "2",
+            "grid-row" =>  "1",
+        )
+    )
+
+
+    main = DemoCard(
+        "MAIN",
+        style = Styles(
+            "grid-column" =>  "2",
+            "grid-row" =>  "2",
+        )
+    )
+
+
+    grid = Grid(
+        sidebar, header, main,
+        columns = "2fr 5fr",
+        rows = "50px 1fr"
+    )
+    return DOM.div(grid; style=Styles("height" => "600px", "margin" => "20px", "position" => :relative))
+end
+```
+
+With `areas`, in css `grid-template-areas` this can be made even simpler:
+
+```@example 1
+App() do
+
+
+    sidebar = DemoCard(
+        "SIDEBAR",
+        style = Styles("grid-area" =>  "sidebar")
+    )
+
+
+    header = DemoCard(
+        "HEADER",
+        style = Styles("grid-area" =>  "header")
+    )
+
+
+    main = DemoCard(
+        "MAIN",
+        style = Styles("grid-area" =>  "main")
+    )
+
+
+    grid = Grid(
+        sidebar, header, main,
+        columns = "2fr 5fr",
+        rows = "50px 1fr",
+        areas = """
+            'sidebar header'
+            'sidebar main';
+        """
+    )
+    return DOM.div(grid; style=Styles("height" => "600px", "margin" => "20px", "position" => :relative))
+end
+```
+
+The syntax is quite similar to Julia's matrix syntax, just wrapping all rows into `'...row...'`!
+To span multiple rows or columns, the name can be repeated multiple times.
+
+## Alignment
+
+```@example 1
+App() do
+    grid = Grid(
+        DemoCard(), DemoCard(),
+        columns = "90px 90px",
+    )
+    return DOM.div(grid; style=Styles("height" => "200px", "margin" => "20px", "position" => :relative, "background-color" => "#F88379", "padding" => "5px"))
+end
+```
+
+```@example 1
+App() do session
+    justification = Bonito.Dropdown(["space-evenly", "center", "end", "space-between", "space-around", "space-evenly"], style=Styles("width" => "200px"))
+
+
+    grid = Grid(
+        DemoCard(), DemoCard(),
+        columns = "90px 90px"
+    )
+    onjs(session, justification.option_index, js""" (idx) => {
+        grid = $(grid)
+        grid.style["justify-content"] = $(justification.options[])[idx-1]
+    }""")
+    area_style = Styles("height" => "200px", "width" => "600px", "margin" => "20px", "position" => :relative, "background-color" => "#F88379", "padding" => "5px")
+    grid_area = DOM.div(grid; style=area_style)
+    return Grid(justification, grid_area; justify_items="center")
+end
+```
+
+```@example 1
+App() do session
+    content = Bonito.Dropdown(["space-evenly", "center", "end", "space-between", "space-around"])
+    items = Bonito.Dropdown(["stretch", "start", "center", "end"])
+    grid = Grid(
+        DemoCard(), DemoCard(),
+        DemoCard(), DemoCard(),
+        columns = "90px 90px"
+    )
+    onjs(session, content.option_index, js""" (idx) => {
+        grid = $(grid)
+        const val = $(content.options[])[idx-1]
+        grid.style["justify-content"] = val
+    }""")
+    onjs(session, items.option_index, js""" (idx) => {
+        grid = $(grid)
+        const val = $(items.options[])[idx-1]
+        grid.style["justify-items"] = val
+    }""")
+    grid_area = DOM.div(grid; style=Styles("height" => "200px", "width" => "600px", "margin" => "20px", "position" => :relative, "background-color" => "#F88379", "padding" => "5px",
+        "grid-column" => "1 / 3", "grid-row" => "2"))
+    return Grid(content, items, grid_area; width="500px", justify_items="space-around")
+end
+```
+
+```@example 1
+App() do session
+    content = Bonito.Dropdown(["space-evenly", "center", "end", "space-between", "space-around"])
+    items = Bonito.Dropdown(["stretch", "start", "center", "end"])
+    align_content = Bonito.Dropdown(["space-evenly", "center", "end", "space-between", "space-around"])
+    align_items = Bonito.Dropdown(["stretch", "start", "center", "end"])
+    grid_style = Styles("position" => :absolute, "top" => 0, "left" => 0)
+    grid = Grid(
+        centered("One"), centered("Two"),
+        centered("Three"), centered("Four"),
+        columns = "100px 100px",
+        rows = "100px 100px",
+        style=grid_style
+    )
+
+
+    grid_col() = DOM.div(style=Styles("border" => "2px dashed white", "width"=>"100px"))
+    grid_row() = DOM.div(style=Styles("border" => "2px dashed white", "height"=>"100px"))
+
+
+    shadow_cols = Grid(
+        grid_col(), grid_col(),
+        columns = "100px 100px",
+        style=grid_style
+    )
+    shadow_rows = Grid(
+        grid_row(), grid_row(),
+        rows = "100px 100px",
+        style=grid_style
+    )
+
+
+    onjs(session, content.option_index, js""" (idx) => {
+        const grids = [$(grid), $(shadow_cols)]
+        const val = $(content.options[])[idx-1]
+        grids.forEach(x=> x.style["justify-content"] = val)
+    }""")
+
+
+    onjs(session, items.option_index, js""" (idx) => {
+        const grids = [$(grid), $(shadow_cols)]
+        const val = $(items.options[])[idx-1]
+        grids.forEach(x=> x.style["justify-items"] = val)
+    }""")
+
+
+    onjs(session, align_content.option_index, js""" (idx) => {
+        const grids = [$(grid), $(shadow_rows)]
+        const val = $(align_content.options[])[idx-1]
+        grids.forEach(x=> x.style["align-content"] = val)
+    }""")
+
+
+    onjs(session, align_items.option_index, js""" (idx) => {
+        const grids = [$(grid), $(shadow_rows)]
+        const val = $(align_items.options[])[idx-1]
+        grids.forEach(x=> x.style["align-items"] = val)
+    }""")
+
+
+    grid_area = DOM.div(grid, shadow_cols, shadow_rows; style=Styles(
+        "height" => "400px", "width" => "400px",
+        "margin" => "20px",
+        "padding" => "5px",
+        "position" => :relative,
+        "background-color" => "#F88379",
+        "grid-column" => "1 / 3", "grid-row" => "4"))
+
+
+    text(t) = DOM.div(t; style=Styles("font-size" => "1.3rem", "font-weight" => "bold"))
+    final_grid = Grid(
+        text("Row Alignment"), text("Col Justification"),
+        align_content, content,
+        align_items, items,
+        grid_area;
+        rows = "2rem 1rem 2rem 1fr",
+        align_items = "center",
+        justify_items="begin", justify_content="center",
+        width="400px")
+
+
+    return DOM.div(final_grid, style=Styles("padding" => "20px"))
+end
+```
+
+================
+File: plotting.md/plotting.md
+================
+# Plotting
+
+All plotting frameworks overloading the Julia display system should work out of the box and all Javascript plotting libraries should be easy to integrate!
+The following example shows how to integrate popular libraries like Makie, Plotly and Gadfly.
+
+```@example 1
+using Bonito
+using WGLMakie
+import WGLMakie as W
+import Gadfly as G
+import PlotlyLight as PL
+
+Page() # required for multi cell output inside documenter
+
+function makie_plot()
+    N = 10
+    function xy_data(x, y)
+        r = sqrt(x^2 + y^2)
+        r == 0.0 ? 1.0f0 : (sin(r) / r)
+    end
+    l = range(-10, stop=10, length=N)
+    z = Float32[xy_data(x, y) for x in l, y in l]
+    W.surface(
+        -1 .. 1, -1 .. 1, z,
+        colormap=:Spectral,
+        figure=(; size=(300, 300))
+    )
+end
+
+# As far as I can tell, PlotlyLight doesn't handle require inside documenter correctly
+# So we just use Bonito to do it correctly via `Asset`:
+const Plotly = Bonito.Asset(PL.plotly.url)
+
+function Bonito.jsrender(session::Session, plot::PL.Plot)
+    # Pretty much copied from the PlotlyLight source to create the JS + div for creating the plot:
+    div = DOM.div(style="width: 300px;height: 300px;")
+    src = js"""
+        Plotly.newPlot($(div), $(plot.data), $(plot.layout), $(plot.config))
+    """
+    return Bonito.jsrender(session, DOM.div(Plotly, div, src))
+end
+
+App() do
+    p = PL.plot(x = 1:20, y = cumsum(randn(20)), type="scatter", mode="lines+markers")
+    G.set_default_plot_size(300G.px, 300G.px)
+    gp = G.plot([sin, cos], 0, 2pi)
+    # The plots already leave lots of white space
+    PCard(p) = Card(p, padding="0px", margin="0px")
+    return Grid(
+        PCard(gp),
+        PCard(p),
+        PCard(makie_plot());
+        columns="repeat(auto-fit, minmax(300px, 1fr))", justify_items="center")
+end
+```
+
+================
+File: static.md/static.md
+================
+# Static Sites
+
+There are several ways to generate static sites with Bonito.
+The main one is:
+
+```@docs
+export_static
+```
+
+The simplest one, which also allows an interactive Revise based workflow is enabled by `interactive_server`:
+
+```@docs
+interactive_server
+```
+
+When exporting interactions defined within Julia not using Javascript, one can use, to cache all interactions:
+
+```@docs
+Bonito.record_states
+```
+
+================
+File: styling.md/styling.md
+================
+# Styling
+
+## Basics
+
+```@setup 1
+using Bonito
+Page()
+```
+
+The main type to style the DOM via css is `Style`:
+
+
+```@docs; canonical=false
+Styles
+```
+
+## Using CSS and pseudo classes
+
+The `CSS` object allows to specify a selector, which will be used to apply the styling to a specific DOM node.
+Since the main usage is to apply the `Style` object to a `DOM` node, the selector is usually empty and we use it mainly for pseudo classes like `:hover`:
+
+```@example 1
+App() do session
+    return DOM.div(
+        "This turns red on hover",
+        style=Styles(
+            CSS(":hover", "color" => "red", "text-size" => "2rem")
+        )
+    )
+end
+```
+
+A more involved example is the style we use for `Button`:
+
+```@example 1
+App() do
+    style = Styles(
+        CSS(
+            "font-weight" => 600,
+            "border-width" => "1px",
+            "border-color" => "#9CA3AF",
+            "border-radius" => "0.25rem",
+            "padding-left" => "0.75rem",
+            "padding-right" => "0.75rem",
+            "padding-top" => "0.25rem",
+            "padding-bottom" => "0.25rem",
+            "margin" => "0.25rem",
+            "cursor" => "pointer",
+            "min-width" => "8rem",
+            "font-size" => "1rem",
+            "background-color" => "white",
+            "box-shadow" => "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.1) 0px 1px 3px 0px, rgba(0, 0, 0, 0.1) 0px 1px 2px -1px";
+        ),
+        CSS(
+            ":hover",
+            "background-color" => "#F9FAFB",
+            "box-shadow" => "rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+        ),
+        CSS(
+            ":focus",
+            "outline" => "1px solid transparent",
+            "outline-offset" => "1px",
+            "box-shadow" => "rgba(66, 153, 225, 0.5) 0px 0px 0px 1px",
+        ),
+    )
+    return DOM.div("Hello", style=style)
+end
+```
+If we merged a complex `Style` like the above with a user given `Styles` object, it will merge all CSS objects with the same selector, allowing to easily overwrite all styling attributes.
+
+This is how one can style a Button:
+
+```@example 1
+App() do
+    style = Styles(
+        CSS("font-weight" => "500"),
+        CSS(":hover", "background-color" => "silver"),
+        CSS(":focus", "box-shadow" => "rgba(0, 0, 0, 0.5) 0px 0px 5px"),
+    )
+    button = Button("Click me"; style=style)
+    return button
+end
+```
+
+
+## Using Styles as global Stylesheet
+
+One can also define a global stylesheet with `Styles` using selectors to style parts of an HTML document.
+This can be handy to set some global styling, but please be careful, since this will affect the whole document. That's also why we need to set a specific attribute selector for all, to not affect the whole documentation page.
+This will not happen when assigning a style to `DOM.div(style=Styles(...))`, which will always just apply to that particular div and any other div assigned to.
+Note, that a style object directly inserted into the DOM will be rendered exactly where it occurs without deduplication!
+
+```@example 1
+App() do
+    style = Styles(
+        CSS("*[our-style]", "font-style" => "italic"),
+        CSS("p[our-style]", "color" => "red"),
+        CSS(".myClass[our-style]", "text-decoration" => "underline"),
+        CSS("#myId[our-style]", "font-family" => "monospace"),
+        CSS("p.myClass#myId[our-style]", "font-size" => "1.5rem")
+    )
+    return DOM.div(
+        style,
+        DOM.div(ourStyle=1,
+            DOM.p(class="myClass", id="myId", "I match everything.", ourStyle=1),
+            DOM.p("I match the universal and type selectors only.", ourStyle=1)
+        )
+    )
+end
+```
+
+================
+File: widgets.md/widgets.md
+================
+# Widgets
+
+```@setup 1
+using Bonito
+Page()
+```
+
+## All Available widgets
+
+```@docs; canonical=false
+Button
+```
+
+```@example 1
+include_string(@__MODULE__, Bonito.BUTTON_EXAMPLE) # hide
+```
+
+```@docs; canonical=false
+TextField
+```
+```@example 1
+include_string(@__MODULE__, Bonito.TEXTFIELD_EXAMPLE) # hide
+```
+
+```@docs; canonical=false
+NumberInput
+```
+```@example 1
+include_string(@__MODULE__, Bonito.NUMBERINPUT_EXAMPLE) # hide
+```
+
+```@docs; canonical=false
+Dropdown
+```
+```@example 1
+include_string(@__MODULE__, Bonito.DROPDOWN_EXAMPLE) # hide
+```
+
+```@docs
+Card
+```
+```@example 1
+include_string(@__MODULE__, Bonito.CARD_EXAMPLE) # hide
+```
+
+```@docs
+StylableSlider
+```
+```@example 1
+include_string(@__MODULE__, Bonito.STYLABLE_SLIDER_EXAMPLE) # hide
+```
+
+```@docs; canonical=false
+Bonito.Table
+```
+
+The `Table` widget provides an interactive way to display tabular data that conforms to the Tables.jl interface.
+It supports custom styling, interactive sorting, and flexible cell rendering.
+
+### Basic Usage
+
+```@example 1
+
+# Create sample data using named tuples
+data = [
+    (name="Alice", age=25, score=95.5),
+    (name="Bob", age=30, score=87.2),
+    (name="Charlie", age=22, score=92.8)
+]
+
+# Basic table
+basic_table = Bonito.Table(data)
+App(basic_table)
+```
+
+### Custom Cell Styling
+
+You can provide custom class and style callbacks to control the appearance of individual cells:
+
+```@example 1
+# Color coding function based on values
+function score_class_callback(table, row, col, val)
+    # Color the score column based on value
+    if col == 3 && isa(val, Number)  # Score column
+        if val >= 90
+            return "cell-good"
+        elseif val >= 80
+            return "cell-neutral"
+        else
+            return "cell-bad"
+        end
+    end
+    return "cell-default"
+end
+
+# Style callback for additional formatting
+function score_style_callback(table, row, col, val)
+    if col == 3 && isa(val, Number)  # Score column
+        return "font-weight: bold;"
+    end
+    return ""
+end
+
+styled_table = Bonito.Table(data;
+                    class_callback=score_class_callback,
+                    style_callback=score_style_callback)
+App(styled_table)
+```
+
+### Sorting Options
+
+Tables support interactive sorting by clicking on headers (column sorting) or first cells (row sorting):
+
+```@example 1
+# Table with only column sorting enabled
+column_sort_table = Bonito.Table(data;
+                         allow_row_sorting=false,
+                         allow_column_sorting=true)
+
+# Table with all sorting disabled
+no_sort_table = Bonito.Table(data;
+                     allow_row_sorting=false,
+                     allow_column_sorting=false)
+App() do
+    DOM.div(column_sort_table, no_sort_table)
+end
+```
+
+### Working with DataFrames
+
+The Table widget works seamlessly with DataFrames and other Tables.jl-compatible structures:
+
+```@example 1
+using DataFrames
+
+df = DataFrame(
+    Product = ["Laptop", "Mouse", "Keyboard", "Monitor"],
+    Price = [999.99, 29.99, 79.99, 299.99],
+    Stock = [15, 120, 45, 8],
+    Available = [true, true, false, true]
+)
+
+# Custom formatter for currency and boolean values
+function product_class_callback(table, row, col, val)
+    if col == 2  # Price column
+        return val > 100 ? "cell-neutral" : "cell-good"
+    elseif col == 4  # Available column
+        return val ? "cell-good" : "cell-bad"
+    end
+    return "cell-default"
+end
+
+product_table = Bonito.Table(df; class_callback=product_class_callback)
+App(product_table)
+```
+
+### Advanced Example: Financial Data
+
+```@example 1
+# Financial data with multiple metrics
+financial_data = [
+    (company="TechCorp", revenue=1.2e6, profit_margin=0.15, employees=150),
+    (company="DataInc", revenue=2.8e6, profit_margin=0.08, employees=300),
+    (company="CloudSys", revenue=0.9e6, profit_margin=0.22, employees=85),
+    (company="WebFlow", revenue=1.8e6, profit_margin=0.12, employees=220)
+]
+
+function financial_class_callback(table, row, col, val)
+    if col == 2  # Revenue column
+        return val > 1.5e6 ? "cell-good" : "cell-neutral"
+    elseif col == 3  # Profit margin column
+        if val > 0.15
+            return "cell-good"
+        elseif val > 0.10
+            return "cell-neutral"
+        else
+            return "cell-bad"
+        end
+    end
+    return "cell-default"
+end
+
+function financial_style_callback(table, row, col, val)
+    if col == 3  # Profit margin column
+        return "font-family: monospace;"
+    end
+    return ""
+end
+
+financial_table = Bonito.Table(financial_data;
+                       class_callback=financial_class_callback,
+                       style_callback=financial_style_callback,
+                       class="financial-data")
+App(financial_table)
+```
+
+
+## Widgets in Layouts
+
+
+There are a few helpers to e.g. put a label next to a widget:
+
+
+```@docs
+Labeled
+```
+```@example 1
+include_string(@__MODULE__, Bonito.LABELED_EXAMPLE) # hide
+```
+
+To create more complex layouts, one should use e.g. [`Grid`](@ref), and visit the [Layouting](@ref) tutorial.
+
+
+```@example 1
+
+App() do session
+    s = Bonito.StylableSlider(0:10;)
+    d = Dropdown(["a", "b", "c"])
+    ni = NumberInput(10.0)
+    ti = Bonito.TextField("helo")
+    button = Button("click")
+    clicks = Observable(0)
+    on(session, button.value) do bool
+        clicks[] = clicks[] + 1
+    end
+    return Card(Grid(
+            button, Bonito.Label(clicks),
+            s, Bonito.Label(s.value),
+            d, Bonito.Label(d.value),
+            ni, Bonito.Label(ni.value),
+            ti, Bonito.Label(ti.value);
+            columns="1fr min-content",
+            justify_content="begin",
+            align_items="center",
+        ); width="300px",)
+end
+```
+
+## Editor
+
+This editor works in pure Javascript, so feel free to try out editing the Javascript and clicking `eval` to see how the output changes.
+In `Bonito/examples/editor.jl`, you will find a version that works with Julia code, but that requires a running Julia server of course.
+
+
+```@example 1
+using Bonito, Observables
+src = """
+(() => {
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext('2d');
+    const width = 500
+    const height = 400
+    canvas.width = width;
+    canvas.height = height;
+    const gradient = context.createRadialGradient(200, 200, 0, 200, 200, 200);
+    gradient.addColorStop("0", "magenta");
+    gradient.addColorStop(".25", "blue");
+    gradient.addColorStop(".50", "green");
+    gradient.addColorStop(".75", "yellow");
+    gradient.addColorStop("1.0", "red");
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, width, height);
+    return canvas;
+})();
+"""
+App() do session::Session
+    editor = CodeEditor("javascript"; initial_source=src, width=800, height=300)
+    eval_button = Button("eval")
+    output = DOM.div(DOM.span())
+    Bonito.onjs(session, eval_button.value, js"""function (click){
+        const js_src = $(editor.onchange).value;
+        const result = new Function("return " + (js_src))()
+        let dom;
+        if (typeof result === 'object' && result.nodeName) {
+            dom = result
+        } else {
+            const span = document.createElement("span")
+            span.innerText = result;
+            dom = span
+        }
+        Bonito.update_or_replace($(output), dom, false);
+        return
+    }
+    """)
+    notify(eval_button.value)
+    return DOM.div(editor, eval_button, output)
+end
+```
+
+## Tailwinddashboard
+
+[`Styles`](@ref) is preferred to style components, but Bonito also includes some [Tailwind](https://tailwindcss.com/) based components.
+They're from before `Styles` and will likely get removed in the future.
+
+
+```@example 1
+using Bonito
+import Bonito.TailwindDashboard as D
+
+function range_slider(orientation)
+    range_slider = RangeSlider(1:100; value=[10, 80])
+    range_slider.tooltips[] = true
+    range_slider.ticks[] = Dict(
+        "mode" => "range",
+        "density" => 3
+    )
+    range_slider.orientation[] = orientation
+    return range_slider
+end
+
+App() do
+    button = D.Button("click")
+    textfield = D.TextField("type in your text")
+    numberinput = D.NumberInput(0.0)
+    file_input = D.FileInput()
+    on(file_input.value) do file
+        @show file
+    end
+    slider = D.Slider("Test", 1:5)
+
+    checkbox = D.Checkbox("check this", true)
+    table = Bonito.Table([(a=22, b=33, c=44), (a=22, b=33, c=44)])
+
+    source = """
+    function test(a, b)
+        return a + b
+    end
+    """
+    editor = CodeEditor("julia"; initial_source=source, width=250, height=200, scrollPastEnd=false)
+    dropdown = D.Dropdown("chose", ["option 1", "option 2", "option 3"])
+
+    vrange_slider = range_slider(Bonito.WidgetsBase.vertical)
+
+    hrange_slider = range_slider(Bonito.WidgetsBase.horizontal)
+
+
+    return DOM.div(
+        D.Card.([
+            D.FlexRow(
+                D.Card(D.FlexCol(
+                    button,
+                    textfield,
+                    numberinput,
+                    dropdown,
+                    file_input,
+                    slider,
+                    checkbox,
+                    class="items-start"
+                )),
+                D.Card(D.FlexCol(
+                    D.Card(DOM.div(vrange_slider; style="height: 200px; padding: 1px 50px")),
+                    D.Card(DOM.div(hrange_slider; style="width: 200px; padding: 50px 1px"),
+                    )),
+                )),
+            D.FlexRow(
+                D.Card.([
+
+                    D.Card(table; class="w-64")
+                    editor
+                ])
+            ),
+        ])...
+    )
+end
+```
+
+
+
+
+
+================================================================
+End of Codebase
+================================================================

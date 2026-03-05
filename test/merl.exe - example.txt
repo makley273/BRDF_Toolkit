@@ -1,0 +1,22 @@
+PS C:\Users\makle\Desktop\Proseminar> .\merl.exe C:\Users\makle\Desktop\Proseminar\blue-acrylic.binary 45 45 60 70
+
+Input angles (degrees):
+theta_in: 45.00, phi_in: 45.00
+theta_out: 60.00, phi_out: 70.00
+
+Rusinkiewicz coordinates (degrees):
+theta_half: 51.84
+phi_half: 58.78
+theta_diff: 12.35
+phi_diff: -128.02
+
+BRDF indices:
+Base index: 1103811
+Red index: 1103811
+Green index: 2561811
+Blue index: 4019811
+
+BRDF values:
+Red: 0.003357
+Green: 0.011261
+Blue: 0.033194

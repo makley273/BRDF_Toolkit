@@ -1,0 +1,1330 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+The content has been processed where empty lines have been removed, content has been compressed (code blocks are separated by ⋮---- delimiter), security check has been disabled.
+
+================================================================
+File Summary
+================================================================
+
+Purpose:
+--------
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+
+File Format:
+------------
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  a. A separator line (================)
+  b. The file path (File: path/to/file)
+  c. Another separator line
+  d. The full contents of the file
+  e. A blank line
+
+Usage Guidelines:
+-----------------
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+
+Notes:
+------
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Empty lines have been removed from all files
+- Content has been compressed - code blocks are separated by ⋮---- delimiter
+- Security check has been disabled - content may contain sensitive information
+- Files are sorted by Git change count (files with more changes are at the bottom)
+
+
+================================================================
+Directory Structure
+================================================================
+api.md/
+  api.md
+app.md/
+  app.md
+assets.md/
+  assets.md
+components.md/
+  components.md
+dashi.png/
+  dashi.png
+dashi.svg/
+  dashi.svg
+deployment.md/
+  deployment.md
+electron.png/
+  electron.png
+extending.md/
+  extending.md
+handlers.md/
+  handlers.md
+ijulia.png/
+  ijulia.png
+index.md/
+  index.md
+interactions.md/
+  interactions.md
+javascript-libraries.md/
+  javascript-libraries.md
+jupyterlab.png/
+  jupyterlab.png
+layouting.md/
+  layouting.md
+plotting.md/
+  plotting.md
+pluto.png/
+  pluto.png
+static.md/
+  static.md
+styling.md/
+  styling.md
+vscode.png/
+  vscode.png
+widgets.md/
+  widgets.md
+
+================================================================
+Files
+================================================================
+
+================
+File: api.md/api.md
+================
+# Api
+
+## Public Functions
+
+
+```@autodocs
+Modules = [Bonito]
+Order   = [:module, :constant, :type, :function, :macro]
+Public  = true
+Private = false
+```
+
+## Private Functions
+
+```@autodocs
+Modules = [Bonito]
+Order   = [:module, :constant, :type, :function, :macro]
+Public  = false
+Private = true
+```
+
+```@autodocs
+Modules = [Bonito.HTTPServer]
+Order   = [:module, :constant, :type, :function, :macro]
+Public  = true
+Private = true
+```
+
+================
+File: app.md/app.md
+================
+# App
+
+The `App` type is the main entry point for creating Bonito applications. It wraps your content and handles the connection between Julia and the browser.
+
+## Basic Usage
+
+```julia
+using Bonito
+
+# Simple app with static content
+app = App(DOM.div("Hello World"))
+
+# App with session access
+app = App() do session::Session
+    button = Button("Click me")
+    on(button.value) do _
+        println("Button clicked!")
+    end
+    return button
+end
+
+# App with request access (useful for routing)
+app = App() do session::Session, request::HTTP.Request
+    path = request.target
+    return DOM.div("You requested: $path")
+end
+```
+
+## App Options
+
+The `App` constructor accepts the following keyword arguments:
+
+```julia
+App(handler;
+    title="Bonito App",  # Browser tab title
+    indicator=nothing    # Connection status indicator (nothing by default)
+)
+```
+
+## Connection Indicator
+
+Bonito provides an optional LED-like indicator that can be displayed in the top-right corner to show the connection status to the Julia server:
+
+- **Green**: Connected to the server
+- **Yellow**: Connecting or reconnecting
+- **Red**: Disconnected from the server
+- **Gray**: No connection mode (static export)
+
+### Enabling the Indicator
+
+To show the connection indicator, pass a `ConnectionIndicator()` to your App:
+
+```julia
+App(; indicator=ConnectionIndicator()) do
+    DOM.h1("App with connection indicator")
+end
+```
+
+### Customizing Colors and Size
+
+```julia
+App(; indicator=ConnectionIndicator(
+    connected_color="lime",
+    connecting_color="orange",
+    disconnected_color="red",
+    no_connection_color="gray",
+    size=15  # pixels
+)) do
+    DOM.h1("Custom indicator colors")
+end
+```
+
+!!! note "Browser Display"
+    When using browser display (e.g., displaying apps in VS Code or via `Server`), the indicator is rendered on the root session which persists across app updates. Changes to the `indicator` argument will not take effect until you refresh the browser page to create a new root session.
+
+### Customizing Position
+
+By default, the indicator is positioned in the top-right corner. You can change this:
+
+```julia
+# Bottom-left corner
+App(; indicator=ConnectionIndicator(
+    top="auto",
+    right="auto",
+    style=Styles(
+        "bottom" => "10px",
+        "left" => "10px"
+    )
+)) do
+    DOM.h1("Indicator in bottom-left")
+end
+
+# Center-top with custom styling
+App(; indicator=ConnectionIndicator(
+    right="auto",
+    style=Styles(
+        "left" => "50%",
+        "transform" => "translateX(-50%)",
+        "border" => "2px solid white"
+    )
+)) do
+    DOM.h1("Centered indicator")
+end
+```
+
+### ConnectionIndicator Arguments
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `connected_color` | `"#22c55e"` | Color when connected (green) |
+| `connecting_color` | `"#eab308"` | Color when connecting (yellow) |
+| `disconnected_color` | `"#ef4444"` | Color when disconnected (red) |
+| `no_connection_color` | `"#6b7280"` | Color for NoConnection mode (gray) |
+| `size` | `10` | Diameter in pixels |
+| `position` | `"fixed"` | CSS position property |
+| `top` | `"10px"` | Distance from top |
+| `right` | `"10px"` | Distance from right |
+| `style` | `Styles()` | Additional CSS styles |
+
+## Creating a Custom Indicator
+
+For complete control over the indicator's appearance and behavior, you can create your own by subtyping `AbstractConnectionIndicator`:
+
+```julia
+using Bonito
+
+struct TextIndicator <: AbstractConnectionIndicator
+    font_size::Int
+end
+
+TextIndicator(; font_size=12) = TextIndicator(font_size)
+
+function Bonito.jsrender(session::Session, indicator::TextIndicator)
+    # Create the DOM element
+    status_text = DOM.span("Connecting...";
+        style=Styles(
+            "position" => "fixed",
+            "top" => "10px",
+            "right" => "10px",
+            "font-size" => "$(indicator.font_size)px",
+            "font-family" => "monospace",
+            "padding" => "4px 8px",
+            "background" => "rgba(0,0,0,0.7)",
+            "color" => "white",
+            "border-radius" => "4px",
+            "z-index" => "9999"
+        )
+    )
+
+    # JavaScript to handle status changes
+    init_script = js"""
+    function initTextIndicator(element) {
+        const messages = {
+            connected: "✓ Connected",
+            connecting: "◐ Connecting...",
+            disconnected: "✗ Disconnected",
+            no_connection: "○ Static Mode"
+        };
+
+        const colors = {
+            connected: "#22c55e",
+            connecting: "#eab308",
+            disconnected: "#ef4444",
+            no_connection: "#6b7280"
+        };
+
+        const indicator = {
+            onStatusChange: function(status) {
+                element.textContent = messages[status] || messages.disconnected;
+                element.style.color = colors[status] || colors.disconnected;
+            }
+        };
+
+        Bonito.register_connection_indicator(indicator);
+    }
+    """
+
+    Bonito.onload(session, status_text, init_script)
+    return Bonito.jsrender(session, status_text)
+end
+
+# Use it
+App(; indicator=TextIndicator(font_size=14)) do
+    DOM.h1("App with text-based indicator")
+end
+```
+
+### JavaScript API for Custom Indicators
+
+When creating a custom indicator, register it with Bonito using these JavaScript functions:
+
+```javascript
+// Register your indicator object
+Bonito.register_connection_indicator({
+    // Called when connection status changes
+    onStatusChange: function(status) {
+        // status: "connected" | "connecting" | "disconnected" | "no_connection"
+    }
+});
+
+// Unregister the current indicator
+Bonito.unregister_connection_indicator();
+
+// Status constants (for comparison)
+Bonito.ConnectionStatus.CONNECTED      // "connected"
+Bonito.ConnectionStatus.CONNECTING     // "connecting"
+Bonito.ConnectionStatus.DISCONNECTED   // "disconnected"
+Bonito.ConnectionStatus.NO_CONNECTION  // "no_connection"
+```
+
+The indicator automatically shows the appropriate status based on the connection state, including "no_connection" for static exports.
+
+================
+File: assets.md/assets.md
+================
+# Assets
+
+Assets in Bonito represent external resources like JavaScript libraries, CSS files, images, and other files. They handle loading, bundling, and serving these resources efficiently across different deployment ways (Server/Plotpane/Notebooks/Static Site/Documenter).
+
+## Basic Usage
+
+Assets can reference local files or remote URLs and are automatically served with the appropriate URLs:
+
+```@setup 1
+using Bonito
+Page()
+```
+
+```@example 1
+using Bonito
+
+# Load a local image
+dashi_logo = Asset(joinpath(@__DIR__, "dashi.png"))
+
+# Create an app that displays the image
+app = App() do
+    # Use CSS class selector to style child images of this specific container
+    img_styles = Styles(CSS(".asset-container > img", "width" => "400px"))
+    DOM.div(
+        img_styles,
+        DOM.div(
+            DOM.h2("Asset Example"),
+            DOM.p("Assets render automatically as the appropriate DOM element:"),
+            dashi_logo,  # Automatically becomes DOM.img(src=url_to_asset)
+            DOM.p("Or use assets as src attributes for more control:"),
+            DOM.img(src=dashi_logo; width="400px");  # Asset URL is inserted as src
+            class="asset-container"
+        )
+    )
+end
+```
+
+## JavaScript Assets
+
+JavaScript assets come in two flavors: ES6 modules and traditional scripts.
+
+### ES6 Modules
+
+```@docs
+ES6Module
+```
+
+You can also use the convenient CDN helper (uses esm.sh):
+
+```julia
+THREE = CDNSource("three"; version="0.137.5")
+```
+
+### Traditional Scripts (Non-module)
+
+For traditional JavaScript libraries that expose global variables (like jQuery, ACE editor, etc.):
+
+```julia
+# The Asset automatically infers the global name from the filename
+ace = Asset("https://cdn.jsdelivr.net/ace-builds/src-min/ace.js")
+# name is automatically set to "ace"
+
+# Interpolating returns a Promise that resolves with the global object
+js"""
+$(ace).then(ace => {
+    const editor = ace.edit(element);
+})
+"""
+# Override the global name if needed
+custom = Asset("https://example.com/library.js"; name="MyLib")
+```
+
+### Binary Assets
+
+Non-JavaScript assets are loaded as raw bytes when interpolated into javascript:
+
+```julia
+image = Asset("path/to/image.png")
+
+js"""
+$(image).then(bytes => {
+    // bytes is a Uint8Array
+})
+"""
+```
+
+Full ES6Module example creating a THREEJS visualization:
+
+```@example 1
+# Javascript & CSS dependencies can be declared locally and
+# freely interpolated in the DOM / js string, and will make sure it loads
+# Note, that they will be a `Promise` though, so to use them you need to call `module.then(module=> ...)`.
+const THREE = ES6Module("https://cdn.esm.sh/v66/three@0.136/es2021/three.js")
+
+app = App() do session, request
+    width = 500; height = 500
+    dom = DOM.div(width = width, height = height)
+    Bonito.onload(session, dom, js"""
+        function (container){
+            $(THREE).then(THREE=> {
+                var renderer = new THREE.WebGLRenderer({antialias: true});
+                renderer.setSize($width, $height);
+                renderer.setClearColor("#ffffff");
+                container.appendChild(renderer.domElement);
+                var scene = new THREE.Scene();
+                var camera = new THREE.PerspectiveCamera(75, $width / $height, 0.1, 1000);
+                camera.position.z = 4;
+                var ambientLight = new THREE.AmbientLight(0xcccccc, 0.4);
+                scene.add(ambientLight);
+                var pointLight = new THREE.PointLight(0xffffff, 0.8);
+                camera.add(pointLight);
+                scene.add(camera);
+                var geometry = new THREE.SphereGeometry(1.0, 32, 32);
+                var material = new THREE.MeshPhongMaterial({color: 0xffff00});
+                var sphere = new THREE.Mesh(geometry, material);
+                scene.add(sphere);
+                renderer.render(scene, camera);
+            })
+        }
+    """)
+    return dom
+end
+```
+
+================
+File: components.md/components.md
+================
+# Components
+
+Components in Bonito are meant to be re-usable, easily shareable types and functions to create complex Bonito Apps.
+We invite everyone to share their Components by turning them into a Julia library.
+
+There are two ways of defining components in Bonito:
+
+1. Write a function which returns `DOM` objects
+2. Overload `jsrender` for a type
+
+The first is a very lightweight form of defining reusable components, which should be preferred if possible.
+
+But, for e.g. widgets the second form is unavoidable, since you will want to return a type that the user can register interactions with.
+Also, the second form is great for integrating existing types into Bonito like plot objects.
+How to do the latter for Plotly is described in [Plotting](@ref).
+
+Let's start with the simple function based components that reuses existing Bonito components:
+
+```@setup 1
+using Bonito
+Bonito.Page()
+```
+
+```@example 1
+using Dates
+function CurrentMonth(date=now(); style=Styles(), div_attributes...)
+    current_day = Dates.day(date)
+    month = Dates.monthname(date)
+    ndays = Dates.daysinmonth(date)
+    current_day_style = Styles(style, "background-color" => "gray", "color" => "white")
+    days = map(1:ndays) do day
+        if day == current_day
+            return Card(Centered(day); style=current_day_style)
+        else
+            return Card(Centered(day); style=style)
+        end
+    end
+    grid = Grid(days...; columns="repeat(7, 1fr)")
+    return DOM.div(DOM.h2(month), grid; style=Styles("width" => "400px", "margin" => "5px"))
+end
+
+
+App(()-> CurrentMonth())
+```
+
+Now, we could define the same kind of rendering via overloading `jsrender`, if a date is spliced into a DOM:
+
+```@example 1
+function Bonito.jsrender(session::Session, date::DateTime)
+    return Bonito.jsrender(session, CurrentMonth(date))
+end
+App() do
+    DOM.div(now())
+end
+```
+
+Please note, that `jsrender` is not applied recursively on its own, so one needs to apply it manually on the return value.
+It's not needed for simple divs and other Hyperscript elements, but e.g. `Styles` requires a pass through `jsrender` to do the deduplication etc.
+
+================
+File: dashi.svg/dashi.svg
+================
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generator: Adobe Illustrator 16.0.0, SVG Export Plug-In . SVG Version: 6.00 Build 0)  -->
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg version="1.1" id="Ebene_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+	 width="1619px" height="588px" viewBox="0 0 1619 588" enable-background="new 0 0 1619 588" xml:space="preserve">
+<linearGradient id="SVGID_1_" gradientUnits="userSpaceOnUse" x1="39" y1="288.5781" x2="565" y2="288.5781">
+	<stop  offset="0.0099" style="stop-color:#F6F6F6"/>
+	<stop  offset="1" style="stop-color:#FAFAFA"/>
+</linearGradient>
+<ellipse fill="url(#SVGID_1_)" cx="302" cy="288.578" rx="263" ry="269.5"/>
+<linearGradient id="SVGID_2_" gradientUnits="userSpaceOnUse" x1="177.6025" y1="73.1147" x2="426.3989" y2="504.0428">
+	<stop  offset="0.0099" style="stop-color:#CBBBA0"/>
+	<stop  offset="1" style="stop-color:#F6F6F6"/>
+</linearGradient>
+<ellipse fill="url(#SVGID_2_)" cx="302" cy="288.578" rx="246.5" ry="249.5"/>
+<linearGradient id="SVGID_3_" gradientUnits="userSpaceOnUse" x1="195.8584" y1="106.5332" x2="404.1431" y2="467.2928">
+	<stop  offset="0.0099" style="stop-color:#FCEA10"/>
+	<stop  offset="1" style="stop-color:#FFDE00"/>
+</linearGradient>
+<ellipse fill="url(#SVGID_3_)" cx="300" cy="286.912" rx="209" ry="208"/>
+<linearGradient id="SVGID_4_" gradientUnits="userSpaceOnUse" x1="197.8574" y1="108.1982" x2="406.1426" y2="468.9587">
+	<stop  offset="0.0099" style="stop-color:#E69C03"/>
+	<stop  offset="1" style="stop-color:#FFDE00"/>
+</linearGradient>
+<ellipse fill="url(#SVGID_4_)" cx="302" cy="288.578" rx="209" ry="208"/>
+<defs>
+	<filter id="Adobe_OpacityMaskFilter" filterUnits="userSpaceOnUse" x="106.667" y="93.156" width="399.333" height="397.422">
+
+			<feColorMatrix  type="matrix" values="-1 0 0 0 1  0 -1 0 0 1  0 0 -1 0 1  0 0 0 1 0" color-interpolation-filters="sRGB" result="source"/>
+		<feFlood  style="flood-color:white;flood-opacity:1" result="back"/>
+		<feBlend  in="source" in2="back" mode="normal"/>
+	</filter>
+</defs>
+<mask maskUnits="userSpaceOnUse" x="106.667" y="93.156" width="399.333" height="397.422" id="SVGID_5_">
+	<g filter="url(#Adobe_OpacityMaskFilter)">
+		<linearGradient id="SVGID_6_" gradientUnits="userSpaceOnUse" x1="126.3271" y1="40.8242" x2="377.2861" y2="475.498">
+			<stop  offset="0.0099" style="stop-color:#F9B233"/>
+			<stop  offset="1" style="stop-color:#EFEFEF"/>
+		</linearGradient>
+		<ellipse fill="url(#SVGID_6_)" cx="251.807" cy="258.161" rx="277.526" ry="241.417"/>
+	</g>
+</mask>
+<linearGradient id="SVGID_7_" gradientUnits="userSpaceOnUse" x1="206.8418" y1="119.543" x2="405.8252" y2="464.1924">
+	<stop  offset="0.0099" style="stop-color:#F9B233"/>
+	<stop  offset="1" style="stop-color:#EFEFEF"/>
+</linearGradient>
+<ellipse opacity="0.6" mask="url(#SVGID_5_)" fill="url(#SVGID_7_)" cx="306.333" cy="291.867" rx="199.667" ry="198.711"/>
+<linearGradient id="SVGID_8_" gradientUnits="userSpaceOnUse" x1="305.6357" y1="282.7998" x2="281.9926" y2="291.8755" gradientTransform="matrix(0.9898 -0.1423 0.1423 0.9898 -38.0328 47.0515)">
+	<stop  offset="0.0296" style="stop-color:#000000"/>
+	<stop  offset="1" style="stop-color:#3D2A14"/>
+</linearGradient>
+<polygon fill="url(#SVGID_8_)" points="146.062,39.245 423.413,547.941 446.803,537.885 152.765,34.588 "/>
+<linearGradient id="SVGID_9_" gradientUnits="userSpaceOnUse" x1="334.3125" y1="253.1284" x2="311.6358" y2="261.8332" gradientTransform="matrix(0.9843 -0.1766 0.1766 0.9843 -51.8185 82.5834)">
+	<stop  offset="0.0296" style="stop-color:#000000"/>
+	<stop  offset="1" style="stop-color:#3D2A14"/>
+</linearGradient>
+<polygon fill="url(#SVGID_9_)" points="153.984,34.055 451.854,534.365 472.489,521.548 161.496,31.775 "/>
+<text transform="matrix(1 0 0 1 596 413.7305)" font-family="'MyriadPro-Regular'" font-size="393.0683" letter-spacing="-24">Bonito</text>
+</svg>
+
+================
+File: deployment.md/deployment.md
+================
+# Deployment
+
+Apps can be deployed in a wide variety of scenarios.
+
+Lets start with a very simple example app and show how to deploy that App:
+
+```@example 1
+using Bonito
+example_app = App(DOM.div("hello world"), title="hello world")
+```
+
+## Server
+
+```julia
+# Depending on your servers setup, you may need to listen on another port or URL
+# But 0.0.0.0:80 is pretty standard for most server setups
+port = 80
+url = "0.0.0.0"
+server = Bonito.Server(example_app, url, port)
+```
+
+Now, you should see the webpage at `http://0.0.0.0:80`.
+
+### Proxy + Julia Hub
+
+If the server is behind a proxy, you can set the proxy like this:
+
+```@example 1
+server = Bonito.Server(example_app, "0.0.0.0", 8080; proxy_url="https://my-domain.de/my-app");
+# or set it later
+# this can be handy for interactive use cases where one isn't sure which port is open, and let Bonito find a free port (which will then be different from the one created with, but is stored in `server.port`)
+server.proxy_url = ".../$(server.port)"
+```
+
+You can also set the proxy_url to `"."` to use relative to the served page url.
+This works well e.g. for accessing the webpage on a local network, or when serving it online with your own server.
+This needs to support then establish the websocket connection via the same relative url (so if only the HTML is served via that URL, but not all requests are forwarded to the Bonito server, this won't work).
+
+Bonito tries to do this for known environments like JuliaHub via `get_server()`.
+This will find the most common proxy setup and return a started server:
+
+```@example 1
+server = Bonito.get_server()
+# add a route to the server for root to point to our example app
+route!(server, "/" => example_app)
+```
+The url which this site is now served on can be found via:
+
+```@example 1
+# Here in documenter, this will just return a localhost url
+url_to_visit = online_url(server, "/")
+```
+
+Like this, one can also add multiple pages:
+```@example 1
+page_404 = App() do session, request
+    return DOM.div("no page for $(request.target)")
+end
+# You can use string (paths), or a regex
+route!(server, r".*" => page_404)
+route!(server, "/my/nested/page" => App(DOM.div("nested")))
+url_to_visit = online_url(server, "/my/nested/page")
+```
+
+### Secure HTTPS connections with SSL
+
+If the boss insists your fancy webpage use the `https://` protocol, ask them
+for the SSL certificate and key files, and then launch your Bonito App like
+this:
+
+```
+using MbedTLS
+
+sslconfig = MbedTLS.SSLConfig(<path-to-SSL-certificate-file>, <path-to-SSL-key-file>)
+Bonito.Server(main, url, port, sslconfig=sslconfig)
+```
+
+### Logging requests
+
+You want to see who accesses all of your hard work?  No problem!
+
+```
+using HTTP
+access_log = HTTP.logfmt"[$time_iso8601] $remote_addr $request_uri"
+Bonito.Server(main, url, port, access_log=access_log)
+```
+
+### nginx
+
+If you need to re-route Bonito e.g. to host in parallel to PlutoSliderServer, you want a reverse-proxy like `nginx`. We did some testing with nginx and the following configuration worked for us:
+
+```nginx
+server {
+    listen 8080;
+    location /bonito/ {
+        proxy_pass http://localhost:8081/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+        proxy_set_header Host $host;
+    }
+}
+```
+
+and the Bonito with:
+```julia
+    server = Server("127.0.0.1", 8081;proxy_url="https://www.abc.org/bonito/")
+    route!(server,"/"=>app) # with app an Bonito app
+    # close(server) # useful for debugging ;)
+```
+This would re-route `www.abc.org:8080/bonito/` to your local Bonito-Server.
+
+If you get errors in your browser console relating to "GET", "MIME-TYPE"
+
+1. First make sure that the URL of the assets is "correct", that is, there is no `//` somewhere in the domain, and in principle the client tries to find the correct target (`Server(...,verbose=1)` might help to see if requests arrive).
+2. if the app shows up fine, but you get these errors (typically with `wss://` in the front, indicating some WebSocket issue), double check that all the slashes `/` in your configuration are set correct. That is all these 4 paths should have `/`'s at the end: `location /subfolder/`, `proxy_pass =.../`  `Server(...,proxy_url=".../")` and `route!(...,'/'=>app)`
+3. If it still doesn't work, you might need to look into WebSocket forwarding - or you might have an intermediate reverse-proxy that blocks the WebSocket.
+
+### Heroku
+
+Deploying to Heroku with Bonito works pretty similar to this [blogpost](https://towardsdatascience.com/deploying-julia-projects-on-heroku-com-eb8da5248134).
+
+```
+mkdir my-app
+cd my-app
+julia --project=. -e 'using Pkg; Pkg.add("Bonito")' # and any other dependency
+```
+
+then create 2 files:
+
+`app.jl`:
+```julia
+using Bonito
+# The app you want to serve
+#  Note: you can also add more pages with `route!(server, ...)` as explained aboce
+my_app = App(DOM.div("hello world"))
+port = parse(Int, ENV["PORT"])
+# needs to match `heroku create - a example-app`,
+# which we can ensure by using the env variable
+# which is only available in review app, so one needs to fill this in manually for now
+# https://devcenter.heroku.com/articles/github-integration-review-apps#injected-environment-variables
+my_app_name = get(ENV, "HEROKU_APP_NAME", "example-app")
+url = "https://$(my_app_name).herokuapp.com/"
+wait(Bonito.Server(my_app, "0.0.0.0", port, proxy_url=url))
+```
+
+`Procfile`:
+```
+web: julia --project=. app.jl
+```
+
+and then to upload the app install the [heroku-cli](https://devcenter.heroku.com/articles/heroku-cli) and run as explained in the [heroku git deploy section](https://devcenter.heroku.com/articles/git):
+
+```
+$ cd my-app
+$ git init
+$ git add .
+$ git commit -m "first commit"
+$ heroku create -a example-app
+$ heroku git:remote -a example-app
+```
+Which, after showing you the install logs, should print out the url to visit in the end.
+You can see the full example here:
+
+https://github.com/SimonDanisch/Bonito-heroku
+
+## Terminal
+
+If no HTML display is found in the Julia display stack, Bonito calls `Bonito.enable_browser_display()` in the `__init__` function.
+This adds a display, that opens a browser window to display the app.
+The loading of the `BrowserDisplay` happen in any kind of environment without html display, so this should also work in any kind of terminal or when evaluating a script.
+
+```julia
+> using Bonito
+> example_app # just let the display system display it in a browser window
+```
+
+## VScode
+
+VScode with enabled `Plot Pane` will display any `Bonito.App` in the HTML plotpane:
+![](vscode.png)
+
+If VSCode is used in a remote setting, VSCode may automatically forward the port so the plot pane can work out of the box.
+If this doesn't happen for some reason (it has been reported to not always work), you can manually forward it via the command menu (ctr+shift+p) and `forward a port`, or just select the PORTS tab in the terminal view.
+
+
+## Notebooks
+
+Most common notebook systems should work out of the box.
+
+### IJulia
+![](ijulia.png)
+
+### Jupyterlab
+![](jupyterlab.png)
+
+### Pluto
+![](pluto.png)
+
+## Electron
+
+```julia
+using Electron, Bonito
+# Needs to be called after loading Electron
+Bonito.use_electron_display()
+# display(...) can be skipped in e.g. VSCode with disabled plotpane
+display(example_app)
+```
+![](electron.png)
+
+!!! note
+    By default, `Bonito` will create the Electron window without showing the Developer
+    Tools panel. You can control this behavior at
+    window creation using the `devtools` keyword arg:
+    ```
+    display = Bonito.use_electron_display(devtools = true)
+    ```
+    Alternatively, you can toggle the Developer Tools at any later time using:
+    ```
+    Electron.toggle_devtools(display.window)
+    ```
+
+## Documenter
+
+Bonito works in Documenter without additional setup.
+But, one always needs to include a block like this before any other code block displaying Bonito Apps:
+
+```julia
+using Bonito
+Page()
+```
+This is needed, since Bonito structures the dependencies and state per Page, which needs to be unique per documentation page.
+One can use the Bonito documentation source to see an example.
+
+## Static export
+
+Bonito works also to create static sites, by using `Routes` and `export_static`.
+```julia
+routes = Routes(
+    "/" => App(index_func, title="Makie"),
+    "/team" => App(team_func, title="Team"),
+    "/contact" => App(contact_func, title="Contact"),
+    "/support" => App(support_func, title="Support")
+)
+Bonito.export_static("html/folder", routes)
+```
+
+!!! tip "Connection Indicator"
+    If you enable the [connection indicator](@ref "Connection Indicator"), it will display a gray color in static exports to indicate that no Julia server connection is available.
+
+Please visit [Static Sites](@ref) for more details.
+
+## Anything else
+
+Bonito overloads the `display`/`show` stack for the mime `"text/html"` so any other Software which is able to display html in Julia should work with Bonito.
+If a use case is not supported, please open an issue.
+One can also always directly call:
+```julia
+html_source = sprint(io-> show(io, MIME"text/html"(), example_app))
+```
+Do get the html source code as a string (or just write it to the io).
+
+================
+File: extending.md/extending.md
+================
+# Extending Bonito
+
+## Connection
+
+By default, Bonito uses its own WebSocket server to create the connection between Julia and JavaScript. By extending `Bonito.FrontendConnection`, you can create a new type of connection, e.g. using WebRTC to connect Julia and JavaScript.
+
+Your new connection type should support bidirectional messages of binary data. 
+
+```@setup 1
+using Bonito
+Bonito.Page()
+```
+
+```Julia
+mutable struct MyConnection <: Bonito.FrontendConnection
+    # TODO: your implementation here
+    isopen::Bool
+    socket
+    blabla
+    ...
+end
+
+function MyConnection()
+    # If you need to do something like start an HTTP server, you can do it here, synchronously.
+    
+    
+    return new(
+        true,
+        ...
+    )
+end
+
+function Base.write(connection::MyConnection, binary)
+    # TODO: send the data to JavaScript
+    write(connection.socket, binary)
+end
+
+Base.isopen(connection::MyConnection) = connection.isopen
+Base.close(connection::MyConnection) = (connection.isopen = false)
+open!(connection::MyConnection) = (connection.isopen = true)
+
+function setup_connection(session::Session{MyConnection})
+    # If you need to do something specific for this new session, you can do it here.
+
+    return js"""
+    // TODO: create a connection
+    create_connection(...).then((conn) => {
+        
+        // TODO: when your connection receives a message from Julia, relay the message to `Bonito.process_message(msg)`.
+        conn.on_msg((msg) => {
+            Bonito.process_message(msg)
+        });
+        
+        // TODO: you need to define a JavaScript function that sends a given `binary_data` to Julia. On the Julia side, this should call `Bonito.process_message(connection.parent, binary_data)`.
+        const send_to_julia = (binary_data) => conn.send(binary)
+        
+        // TODO: does your connection use Pako compression on its incoming and outgoing messages?
+        const compression_enabled = false
+        
+        // Register your new connection
+        Bonito.on_connection_open(send_to_julia, compression_enabled);
+    })
+    """
+end
+```
+
+
+You can test your new connection like so:
+
+```Julia
+Bonito.register_connection!(MyConnection) do
+    # you can make this registration conditional, e.g. only use the new connection type on Thursdays...
+    if i_want_to_use_it
+        return MyConnection()
+    else
+        return nothing
+    end
+end
+```
+
+## Managing your own WebSocket server
+
+You should also extend `Bonito.FrontendConnection` in case you would like to make a WebSocket-based connection, but manage the server yourself, e.g. by registering a websocket route using a web framework. In this case, you can reuse some of Bonito's websocket handling code as long as your websocket is internally using `HTTP.WebSockets.WebSocket` objects.
+
+You can do this using the `WebSocketHandler` type and forwarding your connection type's `isopen`, `write`, and `close` methods to it. You can then use the `setup_websocket_connection_js` to return the correct Javascript snippet in your `setup_connection` method and run the main I/O loop by calling `run_connection_loop` from your websocket handler. You will need to take care of saving the session in your `setup_connection` method and routing to the session in your handler, as well as cleaning up websocket sessions. You may need to use locks to accomplish some of these steps in a thread-safe manner.
+
+
+```Julia
+mutable struct MyWebSocketConnection <: Bonito.FrontendConnection
+    # TODO: your implementation here
+    blabla
+    ...
+    handler::WebSocketHandler
+end
+
+Base.isopen(ws::MyWebSocketConnection) = isopen(ws.handler)
+Base.write(ws::MyWebSocketConnection, binary) = write(ws.handler, binary)
+Base.close(ws::MyWebSocketConnection) = close(ws.handler)
+
+function setup_connection(session::Session{MyWebSocketConnection})
+    return setup_connection(session, session.connection)
+
+    # TODO: Register the `session.id` as a route, and save it so it can be retrived in the handler
+    # You could alternatively register a single route and multiplex using a dictionary
+    # TODO: Start a cleanup task to remove routes/saved sessions when they are no longer open
+
+    external_url = # TODO: Get the external URL, which session IDs will be appended to
+    return setup_websocket_connection_js(external_url, session)
+end
+
+function my_web_framework_websocket_handler(my_web_framework_request)
+    session = # TODO: retrieve the session based upon the session ID in the URL in `my_web_framework_request`
+    websocket = # TODO: set up the websocket or retrive it from `my_web_framework_request`
+    connection = session.connection
+
+    try
+        run_connection_loop(session, connection.handler, websocket)
+    finally
+        # TODO: Option 1: Immediately end the session with `close(session)`
+        # You will also need to clean up the route/saved session
+        
+        # TODO: Option 2: Use `soft_close(session)`
+        # This may allow for a temporary disconnected client to reconnect
+        # You may have to prevent your webframework from trying to close the websocket
+        # You will need to clean up the soft closed session and its route/saved session after some timeout in the cleanup task
+    end
+end
+
+# Here is the cleanup task. You might choose to arrange for exactly one of these to be started at some appropriate time.
+# You may like to handle errors so that it always remains running.
+@async while true
+    sleep(1)
+    # Iterate through the sessions and routes that have been set up in `setup_connection`
+    for (session, route) in my_route_data_structure
+        # Apply some cleanup policy to closed or soft closed sessions
+        if should_cleanup(session)
+            # mark route for removeal
+        end
+    end
+    # remove marked routes
+end
+```
+
+You can get further details to guide your implementation by looking at Bonito's own implementation in `Bonito/src/connections/websocket.jl`.
+
+Please read the next section for information about how to make use of Bonito's websocket cleanup policy in your cleanup task.
+
+## Customising the websocket cleanup policy
+
+You can create a custom cleanup policy by subclassing `CleanupPolicy`. For example, you may like to choose to evict sessions based upon the resources they are using, or whether users are authenticated or not or some other criteria.
+
+Implementing the `should_cleanup` and `allow_soft_close` methods is required.
+
+```julia
+struct MyCleanupPolicy <: Bonito.CleanupPolicy end
+
+function Bonito.should_cleanup(policy::MyCleanupPolicy, session::Session)
+    ...
+end
+
+function Bonito.allow_soft_close(policy::MyCleanupPolicy)
+    ...
+end
+
+Bonito.set_cleanup_policy!(MyCleanupPolicy())
+```
+
+You can also make use of cleanup policies including `DefaultCleanupPolicy()` if you manage your own websocket server as outlined in the previous section.
+
+You can get further details to guide your implementation by looking at Bonito's own implementation in `Bonito/src/connections/websocket.jl`.
+
+================
+File: handlers.md/handlers.md
+================
+# Handlers
+
+Handlers are the building blocks for serving content in Bonito. Any type that implements the `apply_handler` interface can be used with `route!` to respond to HTTP requests. This makes Bonito's routing system highly extensible - you can wrap existing handlers to add functionality like authentication, rate limiting, or logging.
+
+## Understanding Handlers
+
+A handler is any type that implements the `apply_handler` method:
+
+```julia
+function Bonito.HTTPServer.apply_handler(handler::YourHandlerType, context)
+    request = context.request
+    # ... process the request and return HTTP.Response
+    return HTTP.Response(200, "Hello World")
+end
+```
+
+The `context` parameter provides access to:
+- `context.request` - The HTTP request object
+- `context.application` - The server instance
+- `context.routes` - The routes table
+- `context.match` - The pattern match result (string or regex match)
+
+Bonito's built-in `App` type is itself a handler, which is why you can use `route!(server, "/" => app)` directly.
+
+## Creating Custom Handlers
+
+Here's a simple example of a custom handler that logs requests:
+
+```@example 1
+using Bonito, Dates
+
+struct LoggingHandler{T}
+    handler::T
+    log_file::String
+end
+
+function Bonito.HTTPServer.apply_handler(logger::LoggingHandler, context)
+    request = context.request
+    # Log the request
+    open(logger.log_file, "a") do io
+        println(io, "$(now()): $(request.method) $(request.target)")
+    end
+    # Delegate to wrapped handler
+    return Bonito.HTTPServer.apply_handler(logger.handler, context)
+end
+
+# Usage
+app = App(DOM.div("Hello World"))
+logged_app = LoggingHandler(app, "requests.log")
+# route!(server, "/" => logged_app)
+```
+
+This pattern of wrapping handlers is similar to middleware in other web frameworks. You can chain multiple wrappers together:
+
+```julia
+protected_logged_app = ProtectedRoute(logged_app, password_store)
+```
+
+## Built-in Handlers
+
+Bonito provides several ready-to-use handlers:
+
+### FolderServer
+
+```@docs; canonical=false
+FolderServer
+```
+
+### ProtectedRoute
+
+
+```@docs; canonical=false
+ProtectedRoute
+```
+
+## Password Storage
+
+```@docs; canonical=false
+AbstractPasswordStore
+```
+
+### SingleUser
+
+```@docs; canonical=false
+SingleUser
+```
+
+### Custom Password Stores
+
+To implement a custom password store, subtype `AbstractPasswordStore` and implement `get_user`:
+
+```julia
+using Bonito
+using Bonito: User, AbstractPasswordStore
+
+# Example: Database-backed password store
+struct DatabasePasswordStore <: AbstractPasswordStore
+    db_connection::DatabaseConnection
+end
+
+function Bonito.get_user(store::DatabasePasswordStore, username::String)
+    # Query database for user
+    result = query(store.db_connection,
+                   "SELECT * FROM users WHERE username = ?", username)
+
+    if isempty(result)
+        return nothing
+    end
+
+    # Reconstruct User from database fields
+    row = result[1]
+    return User(
+        row.username,
+        row.password_hash,  # Already hashed in database
+        row.salt,
+        row.iterations,
+        Dict("role" => row.role)  # Optional metadata
+    )
+end
+
+# The authenticate() method is automatically provided
+```
+
+**Interface Requirements:**
+- Implement `get_user(store, username)` which returns a `User` or `nothing`
+- The `authenticate(store, username, password)` method is automatically implemented
+- Only override `authenticate()` if you need custom authentication logic
+
+**Creating Users Manually:**
+
+```@docs; canonical=false
+User
+```
+
+## Combining Handlers
+
+Handlers can be composed to create complex behaviors:
+
+```julia
+# Multiple layers of protection
+admin_app = App(DOM.h1("Super Secret Admin"))
+logged_app = LoggingHandler(admin_app, "admin.log")
+protected_app = ProtectedRoute(logged_app, admin_store)
+
+# Different protection for different routes
+public_files = FolderServer("public")
+protected_files = ProtectedRoute(FolderServer("private"), file_store)
+
+server = Bonito.Server("0.0.0.0", 8080)
+# Use regex route to forward all file requests to FolderServer
+route!(server, r"/public/.*" => public_files)
+route!(server, "/private/.*" => protected_files)
+route!(server, "/admin" => protected_app)
+```
+
+
+## Advanced: Handler Context
+
+The `context` object passed to handlers is a NamedTuple with the following fields:
+
+```julia
+context = (
+    request = HTTP.Request,      # The HTTP request
+    application = Server,         # The server instance
+    routes = Routes,              # The routes table
+    match = Union{String, RegexMatch}  # The pattern match result
+)
+```
+
+You can access request details like:
+
+```julia
+function Bonito.HTTPServer.apply_handler(handler::MyHandler, context)
+    request = context.request
+
+    # Request method (GET, POST, etc.)
+    method = request.method
+
+    # Request path
+    path = request.target
+
+    # Headers
+    user_agent = HTTP.header(request, "User-Agent", "")
+
+    # Query parameters
+    uri = URIs.URI(request.target)
+    query = URIs.queryparams(uri.query)
+
+    # Access server info
+    server = context.application
+    server_url = online_url(server, "/")
+
+    # Access regex capture groups if using regex pattern
+    if context.match isa RegexMatch
+        captured = context.match.captures
+    end
+
+    # ...
+end
+```
+
+================
+File: index.md/index.md
+================
+`Bonito.jl` is a pretty simple package allowing you to render HTML and serve it from within Julia and build up a communication bridge with the Browser. This allows to combine any of your Julia applications with libraries like [WGLMakie](https://docs.makie.org/dev/documentation/backends/wglmakie/index.html#export) and create interactive Dashboards like this:
+
+![dashboard](https://user-images.githubusercontent.com/1010467/214651671-2f8174b6-48ab-4627-b15f-e19c35042faf.gif)
+
+Bonito is tightly integrated with WGLMakie, which makes them a great pair for high performance, interactive visualizations.
+If performance is not a high priority, many other plotting/visualization libraries which overload the Julia display system should work with `Bonito.jl` as well.
+
+`Bonito.jl` itself tries to stay out of major choices like the HTML/CSS/Javascript framework to use for creating UIs and Dashboards. Instead, it allows to create modular components and makes it easy to use any CSS/Javascript library.
+
+It uses plain HTML widgets for UI elements where it can, and there are a few styleable components like `Card`, `Grid`, `Row`, `Col` to make it easy to create some more complex dashboards out of the box.
+
+If you look at the source of those components, one will see that they're very simple and easy to create, which should help to create a rich ecosystem of extensions around `Bonito.jl`.
+Read more about it in [Components](@ref).
+
+## Quickstart
+
+```@setup 1
+using Bonito
+Bonito.Page()
+```
+
+At the core of Bonito you have `DOM` to create any HTML tag, `js"..."` to run Javascript, and `App` to wrap your creation and serve it anywhere:
+
+```@example 1
+using Bonito
+app = App() do
+    return DOM.div(DOM.h1("hello world"), js"""console.log('hello world')""")
+end
+```
+
+App has three main signatures:
+```julia
+# The main signatures, all other signatures will end up calling:
+App((session, request) -> DOM.div(...))
+# Convenience constructors:
+App((session::Session) -> DOM.div(...))
+App((request::HTTP.Request) -> DOM.div(...))
+App(() -> DOM.div(...))
+App(DOM.div(...))
+```
+
+See [App](@ref) for all App options, including how to add a connection status indicator.
+
+The app will be displayed by e.g. the VSCode plot pane, Jupyter/Pluto or any other framework that overloads the Julia display system for HTML display.
+In the REPL or an environment without an HTML ready display, a browser should open to display it (enabled explicitly via `Bonito.browser_display()`), but one can also serve the App very easily:
+
+```julia
+server = Server(app, "0.0.0.0", 8080)
+# This is the same as:
+server = Server("0.0.0.0", 8080)
+route!(server, "/" => app)
+# So you can add many apps to one server, and even regexes are supported:
+route!(server, r".*" => App(DOM.div("404, no content for this route")))
+route!(server, "/some-app" => App(DOM.div("app")))
+```
+
+## Easy integration with existing JS + CSS libraries
+
+It's quite easy to integrate existing Libraries into your Bonito App:
+
+```@example 1
+App() do
+    js = ES6Module("https://esm.sh/v133/leaflet@1.9.4/es2022/leaflet.mjs")
+    css = Asset("https://unpkg.com/leaflet@1.9.4/dist/leaflet.css")
+    map_div = DOM.div(id="map"; style="height: 300px; width: 100%")
+    return DOM.div(
+        css, map_div,
+        js"""
+        $(js).then(L=> {
+            const map = L.map('map').setView([51.505, -0.09], 13);
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        })
+        """
+    )
+end
+```
+
+Read more about wrapping libraries in [Javascript](@ref).
+
+## Deploying
+
+`Bonito.jl` wants to run everywhere, from Notebooks, IDEs, Electron, to being directly inserted into existing web pages.
+
+![Bonito-wales](https://user-images.githubusercontent.com/1010467/214662497-a1a1c8e7-5f4d-4e57-b129-fdcc227253ca.gif)
+
+Find out more about the different ways to serve your apps in [Deployment](@ref).

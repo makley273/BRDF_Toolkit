@@ -119,11 +119,43 @@ function brdf_value(brdf::MeasuredBRDF, wi::SVector{3, T1}, wo::SVector{3, T2}) 
     return _brdf_value(brdf._data, brdf.wavelengths, wi_norm, wo_norm)
 end
 
-# Convenience overload for tuples
-function brdf_value(brdf::MeasuredBRDF, wi::Tuple{T,T,T}, wo::Tuple{T,T,T}) where T
+# Convenience overload for tuples (accept mixed numeric types)
+function brdf_value(brdf::MeasuredBRDF, wi::Tuple{<:Real,<:Real,<:Real}, wo::Tuple{<:Real,<:Real,<:Real})
     wi_vec = SVector{3, Float32}(wi[1], wi[2], wi[3])
     wo_vec = SVector{3, Float32}(wo[1], wo[2], wo[3])
     return brdf_value(brdf, wi_vec, wo_vec)
+end
+
+# ============================================================================
+# Unified Lookup Interface — common denominator for analytical + measured models
+# ============================================================================
+
+"""
+    lookup(brdf::BRDFData, wi::SVector{3,Float32}, wo::SVector{3,Float32}) -> RGB{Float32}
+
+Unified BRDF evaluation interface for both measured data and analytical models.
+
+This is the **universal entry point**: use `lookup` when you don't know (or don't
+care) whether you have a `MeasuredBRDF` or a `BRDFModel`.
+
+- For `MeasuredBRDF`: delegates to `brdf_value` (format-specific table lookup).
+- For `BRDFModel`:    delegates to `evaluate` (analytical evaluation).
+"""
+function lookup(brdf::MeasuredBRDF, wi::SVector{3, T1}, wo::SVector{3, T2}) where {T1, T2}
+    return brdf_value(brdf, wi, wo)
+end
+
+function lookup(model::BRDFModel, wi::SVector{3, T1}, wo::SVector{3, T2}) where {T1, T2}
+    wi_f = SVector{3, Float32}(wi)
+    wo_f = SVector{3, Float32}(wo)
+    return evaluate(model, wi_f, wo_f)
+end
+
+# Convenience overloads for tuples
+function lookup(brdf::BRDFData, wi::Tuple{<:Real,<:Real,<:Real}, wo::Tuple{<:Real,<:Real,<:Real})
+    wi_vec = SVector{3, Float32}(wi[1], wi[2], wi[3])
+    wo_vec = SVector{3, Float32}(wo[1], wo[2], wo[3])
+    return lookup(brdf, wi_vec, wo_vec)
 end
 
 """

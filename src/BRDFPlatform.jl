@@ -255,7 +255,7 @@ export evaluate, glsl_shader, shader_parameters
 # Concrete model types (loaded as plugins, but re-exported for convenience)
 export LambertianModel, CookTorranceModel, GGXModel
 
-# BRDF lookup interface
+# BRDF lookup interface (lookup is the unified API for both measured + analytical)
 export lookup, lookup_batch, brdf_value
 
 # Plugin functions
@@ -269,7 +269,8 @@ export detect_format, load_brdf
 export run_app, run_interactive_app
 
 # Visualization
-export create_hemisphere_plot, create_simple_hemisphere_plot
+export create_multichannel_hemisphere_plot, create_simple_multichannel_plot
+export create_surface_hemisphere_plot
 export create_polar_slice_plot, create_simple_polar_slice_plot
 
 end # module BRDFPlatform

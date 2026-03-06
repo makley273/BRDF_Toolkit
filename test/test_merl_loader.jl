@@ -21,6 +21,13 @@ using BRDFPlatform
 
 # Reference values from merl.exe output
 const TEST_FILE = joinpath(@__DIR__, "MERL Database", "blue-acrylic.binary")
+
+if !isfile(TEST_FILE)
+    @warn "Test MERL data not found at: $TEST_FILE — skipping MERL loader tests. " *
+          "Place blue-acrylic.binary in test/MERL Database/ to enable this test."
+    exit(0)
+end
+
 const THETA_IN = 45.0  # degrees
 const PHI_IN = 45.0    # degrees
 const THETA_OUT = 60.0 # degrees

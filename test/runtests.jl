@@ -86,9 +86,9 @@ using StaticArrays
 
     @testset "Visualization" begin
         # Test visualization functions
-        @test isdefined(BRDFPlatform, :create_hemisphere_plot)
+        @test isdefined(BRDFPlatform, :create_multichannel_hemisphere_plot)
         @test isdefined(BRDFPlatform, :hemisphere_coords)
-        @test isdefined(BRDFPlatform, :evaluate_merl_at_direction)
+        @test isdefined(BRDFPlatform, :evaluate_brdf_at_direction)
 
         # Test hemisphere coordinate conversion
         coords = BRDFPlatform.hemisphere_coords(0.0, 0.0)
@@ -96,6 +96,23 @@ using StaticArrays
 
         coords = BRDFPlatform.hemisphere_coords(π/2, 0.0)
         @test coords[1] ≈ 1.0 atol=1e-6  # Horizon
+    end
+
+    @testset "Unified lookup API" begin
+        # Test that lookup is defined and works for analytical models
+        @test isdefined(BRDFPlatform, :lookup)
+
+        # Test lookup on a Lambertian model
+        model = LambertianModel(0.5)
+        wi = BRDFPlatform.vec3(0.0, 0.0, 1.0)
+        wo = BRDFPlatform.vec3(0.0, 0.0, 1.0)
+        result = lookup(model, wi, wo)
+        @test result.r ≈ 0.5f0 / Float32(π) atol=1e-6
+        @test result.g ≈ 0.5f0 / Float32(π) atol=1e-6
+
+        # Test lookup with tuples
+        result2 = lookup(model, (0.0, 0.0, 1.0), (0.0, 0.0, 1.0))
+        @test result2.r ≈ result.r atol=1e-6
     end
 
 end

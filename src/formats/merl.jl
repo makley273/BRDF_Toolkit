@@ -204,10 +204,39 @@ function _brdf_value(data::MERLData,
     # theta_d: angle between H and wi
     cos_theta_d = dot(wi_n, h_n)
     theta_d = acos(clamp(cos_theta_d, -1.0f0, 1.0f0))
-    
-    # phi_d: diff vector rotation (Standard Isotropic shortcut)
-    diff = wo_n - wi_n
-    phi_d = atan(diff[2], diff[1])
+
+    # phi_d: Rusinkiewicz difference azimuthal angle
+    # Build an orthonormal frame where h_n is the z-axis, then express wi in that frame.
+    # The azimuthal angle of wi in this frame is phi_d.
+    #
+    # Frame construction (Duff et al. 2017 building-an-orthonormal-basis):
+    #   t = tangent aligned with projection of N onto the plane ⊥ h
+    #   b = h × t
+    # Then phi_d = atan2(dot(wi, b), dot(wi, t))
+
+    N = SVector{3, Float32}(0.0f0, 0.0f0, 1.0f0)
+
+    # Project N onto the plane perpendicular to h_n
+    t = N - dot(N, h_n) * h_n
+    t_len = norm(t)
+
+    if t_len < eps
+        # h is parallel to N (theta_h ≈ 0), phi_d is degenerate — use fallback frame
+        t = SVector{3, Float32}(1.0f0, 0.0f0, 0.0f0)
+        t = t - dot(t, h_n) * h_n
+        t_len = norm(t)
+        if t_len < eps
+            t = SVector{3, Float32}(0.0f0, 1.0f0, 0.0f0)
+            t = t - dot(t, h_n) * h_n
+            t_len = norm(t)
+        end
+    end
+    t = t / t_len
+
+    b = cross(h_n, t)
+
+    # Express wi in the (t, b, h_n) frame and extract azimuthal angle
+    phi_d = atan(dot(wi_n, b), dot(wi_n, t))
 
     # --- 2. Continuous Index Mapping ---
     # Get 0-based floating point coordinates (u, v, w)

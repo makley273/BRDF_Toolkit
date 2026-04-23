@@ -1,13 +1,11 @@
 """
-GGX pure-specular microfacet BRDF model.
+GGX microfacet BRDF model with optional Lambertian diffuse component.
 
-Implements the specular-only Cook-Torrance framework with GGX components:
-    f(wi, wo) = D(h) · G(wi,wo) · F(wi,h) / (4 · NdotL · NdotV)
+    f(wi, wo) = albedo/π  +  D(h) · G(wi,wo) · F(wi,h) / (4 · NdotL · NdotV)
 
-Unlike CookTorranceModel there is no diffuse term — this model represents
-metallic or mirror-like surfaces where all reflectance is specular.
+Set albedo = RGB(0,0,0) for a pure-specular (metallic) surface.
 
-Components (identical to CookTorranceModel):
+Components:
 - D: GGX/Trowbridge-Reitz normal distribution function
 - G: Smith-GGX geometry term (separable form)
 - F: Schlick Fresnel approximation
@@ -31,19 +29,26 @@ using LinearAlgebra
 """
     GGXModel <: BRDFModel
 
-Pure-specular microfacet BRDF. No diffuse component.
+GGX microfacet BRDF with Lambertian diffuse component.
 
 # Fields
 - `roughness`: Perceptual roughness ∈ [0, 1]. α = roughness² used internally.
 - `F0`:        Fresnel reflectance at normal incidence (specular colour).
+- `albedo`:    Diffuse reflectance. Use RGB(0,0,0) for pure-specular (metallic) surfaces.
 """
 struct GGXModel <: BRDFModel
     roughness::Float32
     F0::RGB{Float32}
+    albedo::RGB{Float32}
 end
 
-"""Scalar convenience constructor (grey specular)."""
-GGXModel(roughness::Real, F0::Real) = GGXModel(Float32(roughness), RGB{Float32}(F0, F0, F0))
+"""Scalar convenience constructor (grey specular, no diffuse)."""
+GGXModel(roughness::Real, F0::Real) =
+    GGXModel(Float32(roughness), RGB{Float32}(F0, F0, F0), RGB{Float32}(0, 0, 0))
+
+"""Scalar convenience constructor with grey diffuse."""
+GGXModel(roughness::Real, F0::Real, albedo::Real) =
+    GGXModel(Float32(roughness), RGB{Float32}(F0, F0, F0), RGB{Float32}(albedo, albedo, albedo))
 
 # Microfacet helpers (_ggx_d, _smith_g1, _schlick) loaded from _microfacet_utils.jl
 
@@ -80,10 +85,15 @@ function evaluate(model::GGXModel,
     Fb = _schlick(model.F0.b, VdotH)
 
     denom = 4.0f0 * NdotL * NdotV
+    spec_r = D * G * Fr / denom
+    spec_g = D * G * Fg / denom
+    spec_b = D * G * Fb / denom
+
+    inv_pi = 1.0f0 / Float32(π)
     return RGB{Float32}(
-        max(0.0f0, D * G * Fr / denom),
-        max(0.0f0, D * G * Fg / denom),
-        max(0.0f0, D * G * Fb / denom)
+        max(0.0f0, model.albedo.r * inv_pi + spec_r),
+        max(0.0f0, model.albedo.g * inv_pi + spec_g),
+        max(0.0f0, model.albedo.b * inv_pi + spec_b)
     )
 end
 
@@ -94,13 +104,14 @@ end
 function glsl_shader(::GGXModel)::Tuple{String, Vector{String}}
     shader_path = joinpath(@__DIR__, "..", "rendering", "shaders", "ggx.glsl")
     code = read(shader_path, String)
-    return (code, ["u_roughness", "u_F0"])
+    return (code, ["u_roughness", "u_F0", "u_albedo"])
 end
 
 function shader_parameters(model::GGXModel)::Dict{String, Any}
     return Dict{String, Any}(
         "u_roughness" => model.roughness,
-        "u_F0"        => Float32[model.F0.r, model.F0.g, model.F0.b]
+        "u_F0"        => Float32[model.F0.r, model.F0.g, model.F0.b],
+        "u_albedo"    => Float32[model.albedo.r, model.albedo.g, model.albedo.b]
     )
 end
 

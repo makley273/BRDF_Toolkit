@@ -1,8 +1,8 @@
-// GGX pure-specular microfacet BRDF
+// GGX microfacet BRDF with Lambertian diffuse component
 //
-// f(wi, wo) = D(h) * G(wi,wo) * F(wi,h) / (4 * NdotL * NdotV)
+// f(wi, wo) = albedo/PI  +  D(h) * G(wi,wo) * F(wi,h) / (4 * NdotL * NdotV)
 //
-// No diffuse component — use for metallic/mirror-like surfaces.
+// Set u_albedo = vec3(0.0) for pure-specular (metallic) surfaces.
 //
 // D: GGX normal distribution function
 // G: Smith-GGX geometry term (separable)
@@ -13,9 +13,11 @@
 // Uniforms:
 //   u_roughness : float — perceptual roughness ∈ [0, 1]
 //   u_F0        : vec3  — Fresnel reflectance at normal incidence
+//   u_albedo    : vec3  — diffuse reflectance (vec3(0) for pure specular)
 
 uniform float u_roughness;
 uniform vec3  u_F0;
+uniform vec3  u_albedo;
 
 const float PI = 3.14159265358979323846;
 
@@ -50,5 +52,8 @@ vec3 brdf_evaluate(vec3 wi, vec3 wo, vec3 N) {
     float G = smith_g1(NdotL, alpha2) * smith_g1(NdotV, alpha2);
     vec3  F = schlick(u_F0, VdotH);
 
-    return max(vec3(0.0), D * G * F / (4.0 * NdotL * NdotV));
+    vec3 spec = D * G * F / (4.0 * NdotL * NdotV);
+    vec3 diff = u_albedo / PI;
+
+    return max(vec3(0.0), diff + spec);
 }

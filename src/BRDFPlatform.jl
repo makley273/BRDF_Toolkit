@@ -267,6 +267,9 @@ export load_user_plugins, list_plugins
 # High-level API
 export detect_format, load_brdf
 
+# Optimizers
+export LevenbergMarquardt, fit_brdf
+
 # Web application
 export run_app, run_interactive_app
 

@@ -1,185 +1,139 @@
 # Interactive App: Renderings, Controls & Layout Plan
 
-## Summary of Changes
+## Phased Approach
 
-Three major improvements to the interactive BRDF app:
-1. **Add sphere renderings** for both measured and fitted BRDFs
-2. **Add visibility toggles** for scatter, surface, and render views
-3. **Restructure upper layout** into two columns (Load BRDF + Fit Model side by side)
+### Phase 1: UI Restructuring (implement now)
+- Two-column upper layout: Load BRDF (left) + Fit Model (right)
+- Visibility toggle controls: ☑ Scatter ☑ Surface ☑ Render
+- Placeholder render panels in visualization grid
 
----
+### Phase 2: Three.js Fitted Model Rendering (implement next)
+- Three.js sphere rendering using existing GLSL shaders from `src/rendering/shaders/`
+- Only for fitted models (each model already has `glsl_shader()` + `shader_parameters()`)
+- Uses `Bonito.ES6Module` for Three.js and `Bonito.onload` for setup
 
-## Current State
-
-The app (`src/app/interactive_app.jl`) has:
-- **Load BRDF** section (file upload + path input)
-- **Fit Model** section (model/optimizer selectors + fit button)
-- **Plot Controls** section (angle sliders, channel toggles, sample points, log scale)
-- **2×2 visualization grid**: Measured Scatter | Measured Surface | Fitted Scatter | Fitted Surface
-
-No sphere rendering is implemented. GLSL shaders exist in `src/rendering/shaders/` but are unused in the app.
+### Phase 3: Measured BRDF Rendering (deferred)
+- Waiting for user to provide MERL GLSL shader
+- Will use same Three.js infrastructure from Phase 2
 
 ---
 
-## Detailed Plan
+## Phase 1: Detailed Changes to `src/app/interactive_app.jl`
 
-### 1. Add `SphereRenderHandle` to `src/visualization/plots.jl`
+### 1A. Two-Column Upper Layout
 
-Create a new plot handle similar to `SurfacePlotHandle` that renders a **UV sphere** colored by BRDF evaluation under a given light direction.
+**Current (lines 459-498):** Two separate `DOM.div` blocks stacked vertically:
+- Load BRDF block (lines 459-478)
+- Fit Model block (lines 480-498)
 
-**New struct:**
-```julia
-struct SphereRenderHandle
-    ax::Axis3
-    mesh_vertices::Observable{Vector{Point3f}}
-    mesh_colors::Observable{Vector{RGBf}}
-    mesh_faces::Observable{Vector{TriangleFace{Int}}}
-    n_segments::Observable{Int}     # longitudinal segments
-    visible::Observable{Bool}
-end
-```
-
-**New functions:**
-- `setup_sphere_render!(fig_position; n_segments=64)` — Creates a UV sphere mesh (radius 1), initializes with gray, returns handle
-- `update_sphere_render!(handle, brdf, wi_theta, wi_phi)` — Evaluates BRDF at each vertex for light from `(wi_theta, wi_phi)`, sets vertex colors to the resulting RGB values
-- `clear_sphere_render!(handle)` — Resets to gray sphere
-
-**Sphere rendering approach:**
-- Generate a UV sphere with `n_segments` longitude bands and `n_segments/2` latitude bands
-- For each vertex, compute its normal (= position for unit sphere)
-- Evaluate `lookup(brdf, wi, normal_as_wo)` treating each vertex normal as the outgoing direction
-- Use the resulting RGB as vertex color
-- This creates a "lit sphere" preview showing how the material looks under a single light
-
-**Why WGLMakie instead of Three.js:**
-- Consistent with existing codebase (scatter + surface already use WGLMakie)
-- No additional JS dependencies needed
-- Works for both measured and fitted BRDFs via the universal `lookup()` interface
-- The existing `_AnalyticalWrapper` adapter in `interactive_app.jl` already makes fitted models compatible
-
-### 2. Add Sphere Renders to `interactive_app.jl`
-
-Add two new figure/render handle pairs (following the existing pattern):
-
-```julia
-# Measured sphere render
-fig_render = Figure(resolution=(700, 700))
-render_handle = setup_sphere_render!(fig_render[1, 1]; n_segments=64)
-
-# Fitted sphere render
-fig_render_fit = Figure(resolution=(700, 700))
-render_handle_fit = setup_sphere_render!(fig_render_fit[1, 1]; n_segments=64)
-```
-
-Wire them into the existing `_wire_plots!` reactive system (extend or create `_wire_renders!`).
-
-### 3. Add Visibility Toggle Controls
-
-Add three checkboxes to the Plot Controls section:
+**New:** Single flex row with two columns:
 
 ```
-☑ Scatter  ☑ Surface  ☑ Render
+┌──────────────────────────┬──────────────────────────┐
+│ 📂 Load BRDF             │ 🎯 Fit Model             │
+│ [file input]             │ Model: [select]           │
+│ .binary / .bird / .json  │ Optimizer: [select]      │
+│ Or path: [input] [Load]  │ [🎯 Fit]  status-badge   │
+│ upload_indicator         │ Parameters: ...           │
+│ status_display           │                           │
+└──────────────────────────┴──────────────────────────┘
 ```
 
-Each toggle shows/hides the corresponding visualization panels. Implementation:
-- Create `Observable{Bool}` for each: `show_scatter`, `show_surface`, `show_render`
-- Wrap each visualization `DOM.div` in a `map(show_xxx)` that returns either the content or an empty hidden div
-- This is purely a DOM-level toggle — no re-computation needed
+Implementation: Wrap both in a `DOM.div(style="display: flex; gap: 10px; margin-bottom: 10px;")` with each child having `flex: 1`.
 
-### 4. Restructure Upper Layout
+### 1B. Visibility Toggle Controls
 
-Change from vertical stacking to a two-column layout:
+Add to the existing Plot Controls block (lines 500-578), as a new row:
 
 ```
-BEFORE (vertical):                AFTER (two columns):
-┌─────────────────────────┐      ┌──────────────────┬──────────────────┐
-│ Load BRDF               │      │ Load BRDF        │ Fit Model        │
-│ [file input]            │      │ [file input]     │ Model: [select]  │
-│ [path input] [Load]     │      │ [path] [Load]    │ Opt:   [select]  │
-│ status...               │      │ status...        │ [Fit] status     │
-├─────────────────────────┤      │                  │ Parameters: ...  │
-│ Fit Model               │      └──────────────────┴──────────────────┘
-│ Model: [select]         │      ┌──────────────────────────────────────┐
-│ Opt:   [select]         │      │ Plot Controls                       │
-│ [Fit] status            │      │ θ [slider] φ [slider]               │
-│ Parameters: ...         │      │ Channels: R G B Lum | Pts | Log     │
-├─────────────────────────┤      │ Visibility: ☑ Scatter ☑ Surface ☑ Render │
-│ Plot Controls           │      └──────────────────────────────────────┘
-│ θ [slider] φ [slider]   │
-│ Channels | Pts | Log    │
-└─────────────────────────┘
+Row 3: Visibility: ☑ Scatter  ☑ Surface  ☑ Render
 ```
 
-Implementation: Use `display: flex` with two child `div`s, each `flex: 1`.
+Three new `Observable{Bool}` observables:
+- `show_scatter_obs` (default: true)
+- `show_surface_obs` (default: true)  
+- `show_render_obs` (default: true)
 
-### 5. Update Visualization Grid
+Each viz panel wrapped in `map(show_xxx_obs)` that returns content or hidden div.
 
-Expand from 2×2 to 2×3 (or 3×2) to include renderings:
+### 1C. Visualization Grid with Placeholder Render
+
+Expand from 2×2 to 2×3:
 
 ```
-Measured:  [Scatter] [Surface] [Sphere Render]
-Fitted:    [Scatter] [Surface] [Sphere Render]
+Measured:  [Scatter] [Surface] [Render - placeholder]
+Fitted:    [Scatter] [Surface] [Render - placeholder]
 ```
 
-Each row uses `display: flex` with three equal-width panels. Visibility toggles hide individual panels.
+Render placeholders show "Rendering will appear here when a model is fitted" or similar.
+
+---
+
+## Phase 2: Three.js Rendering (fitted models only)
+
+### Architecture
+
+```mermaid
+graph LR
+    A[fitted_model Observable] --> B[glsl_shader - model]
+    A --> C[shader_parameters - model]
+    B --> D[Three.js ShaderMaterial]
+    C --> D
+    D --> E[Sphere Mesh]
+    E --> F[WebGL Canvas in Bonito]
+    
+    G[wi_theta + wi_phi] --> H[Light direction uniform]
+    H --> D
+```
+
+### Implementation approach
+
+1. Define `const THREE = ES6Module(...)` at module level
+2. Create a `DOM.div` container for each render (measured + fitted)
+3. Use `Bonito.onload(session, container, js"...")` to initialize Three.js scene
+4. When `fitted_model` changes, send GLSL code + parameters to JS via observables
+5. JS side: create `THREE.ShaderMaterial` with the BRDF fragment shader
+6. Vertex shader: standard transformation + pass normal/position to fragment
+7. Fragment shader: call `brdf_evaluate(light_dir, view_dir, normal)` from the model's GLSL
+8. Add orbit controls for camera rotation
+
+### GLSL Integration
+
+Each model's `glsl_shader()` returns `(code, dependencies)`. The `code` contains a `brdf_evaluate(wi, wo, N)` function. We wrap it in a full fragment shader:
+
+```glsl
+// Vertex shader
+varying vec3 vNormal;
+varying vec3 vPosition;
+void main() {
+    vNormal = normalize(normalMatrix * normal);
+    vPosition = (modelViewMatrix * vec4(position, 1.0)).xyz;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+
+// Fragment shader
+uniform vec3 u_lightDir;  // from wi_theta, wi_phi
+uniform vec3 u_viewDir;   // camera direction
+// ... model-specific uniforms from shader_parameters() ...
+// ... brdf_evaluate() from glsl_shader() ...
+
+void main() {
+    vec3 N = normalize(vNormal);
+    vec3 wi = normalize(u_lightDir);
+    vec3 wo = normalize(u_viewDir - vPosition);
+    vec3 color = brdf_evaluate(wi, wo, N);
+    // Tone mapping
+    color = color / (color + vec3(1.0));  // Reinhard
+    gl_FragColor = vec4(color, 1.0);
+}
+```
 
 ---
 
 ## Files to Modify
 
-| File | Changes |
-|------|---------|
-| `src/visualization/plots.jl` | Add `SphereRenderHandle`, `setup_sphere_render!`, `update_sphere_render!`, `clear_sphere_render!`, helper functions, exports |
-| `src/app/interactive_app.jl` | Add render handles, wire reactive plots, add visibility toggles, restructure layout to two-column upper area, expand visualization grid |
-
----
-
-## Mermaid: Updated App Layout
-
-```mermaid
-graph TD
-    A[App Root] --> B[Upper Area - Two Columns]
-    A --> C[Plot Controls]
-    A --> D[Visualization Grid]
-    
-    B --> B1[Left Column: Load BRDF]
-    B --> B2[Right Column: Fit Model]
-    
-    B1 --> B1a[File Input]
-    B1 --> B1b[Path Input + Load Button]
-    B1 --> B1c[Upload Status]
-    B1 --> B1d[File Status Display]
-    
-    B2 --> B2a[Model + Optimizer Selectors]
-    B2 --> B2b[Fit Button + Status Badge]
-    B2 --> B2c[Parameters Readout]
-    
-    C --> C1[Angle Sliders: theta + phi]
-    C --> C2[Channel Toggles: R G B Lum]
-    C --> C3[Sample Points: Scatter + Surface]
-    C --> C4[Log Scale Toggle]
-    C --> C5[Visibility: Scatter + Surface + Render]
-    
-    D --> D1[Measured Row]
-    D --> D2[Fitted Row]
-    
-    D1 --> D1a[Scatter Plot]
-    D1 --> D1b[Surface Plot]
-    D1 --> D1c[Sphere Render]
-    
-    D2 --> D2a[Scatter Plot]
-    D2 --> D2b[Surface Plot]
-    D2 --> D2c[Sphere Render]
-```
-
-## Mermaid: Sphere Rendering Data Flow
-
-```mermaid
-graph LR
-    A[wi_theta + wi_phi] --> B[Compute light direction wi]
-    B --> C[For each sphere vertex]
-    C --> D[Normal = vertex position]
-    D --> E[lookup - brdf, wi, normal]
-    E --> F[RGB color per vertex]
-    F --> G[WGLMakie mesh with vertex colors]
-```
+| Phase | File | Changes |
+|-------|------|---------|
+| 1 | `src/app/interactive_app.jl` | Two-column layout, visibility toggles, placeholder render panels |
+| 2 | `src/app/interactive_app.jl` | Three.js integration for fitted model sphere rendering |
+| 2 | `src/rendering/` | Possibly a new helper module for Three.js scene setup |

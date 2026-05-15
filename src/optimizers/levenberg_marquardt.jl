@@ -413,6 +413,25 @@ fit_brdf(opt::LevenbergMarquardt, ::Type{GGXAnisotropicModel}, data::MeasuredBRD
     _fit_microfacet_aniso_diffuse(opt, GGXAnisotropicModel, data)
 
 # ============================================================================
+# Option declaration (introspected by the UI and future HP tuners)
+# ============================================================================
+
+optimizer_options(::Type{LevenbergMarquardt}) = OptimizerOption[
+    OptimizerOption(:sampling, "Sampling", :choice, :rusinkiewicz,
+                    Any[:rusinkiewicz, :uniform], (0, 0), nothing,
+                    "Direction sampling strategy"),
+    OptimizerOption(:n_samples, "Samples", :int, 1024,
+                    Any[], (256, 8192), 256,
+                    "Number of (wi, wo) sample pairs"),
+    OptimizerOption(:cosine_weight, "Cosine weight", :bool, true,
+                    Any[], (0, 0), nothing,
+                    "Down-weight grazing-angle residuals"),
+    OptimizerOption(:loss, "Loss", :choice, :log,
+                    Any[:log, :linear], (0, 0), nothing,
+                    "Residual transform (:log handles HDR specular)"),
+]
+
+# ============================================================================
 # Registration
 # ============================================================================
 

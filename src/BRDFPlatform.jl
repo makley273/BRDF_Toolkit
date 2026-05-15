@@ -269,6 +269,7 @@ export detect_format, load_brdf
 
 # Optimizers
 export LevenbergMarquardt, fit_brdf
+export OptimizerOption, optimizer_options
 
 # Web application
 export run_app, run_interactive_app

@@ -391,6 +391,81 @@ function create_interactive_app(session)
         style=select_style,
     )
 
+    # ── Dynamic optimizer-option controls ──────────────────────────────────
+    # One Observable per declared option; rebuilt whenever the optimizer
+    # selection changes. The Ref lets the fit callback read the current
+    # dict at fire time without being recreated itself.
+    opt_value_obs = Ref(Dict{Symbol, Observable}())
+
+    function _rebuild_option_obs!(name_sym::Symbol)
+        new_dict = Dict{Symbol, Observable}()
+        OptType = get(OPTIMIZER_REGISTRY, name_sym, nothing)
+        if OptType !== nothing
+            for spec in optimizer_options(OptType)
+                new_dict[spec.name] = Observable{Any}(spec.default)
+            end
+        end
+        opt_value_obs[] = new_dict
+        return new_dict
+    end
+    _rebuild_option_obs!(Symbol(selected_optimizer_name[]))
+
+    option_controls = map(selected_optimizer_name) do name
+        d = _rebuild_option_obs!(Symbol(name))
+        OptType = get(OPTIMIZER_REGISTRY, Symbol(name), nothing)
+        OptType === nothing && return DOM.span()
+        specs = optimizer_options(OptType)
+        isempty(specs) && return DOM.span()
+        elements = Any[]
+        for spec in specs
+            obs = d[spec.name]
+            ctrl = if spec.kind === :choice
+                DOM.select(
+                    [DOM.option(string(c); value=string(c),
+                                selected = (c == spec.default)) for c in spec.choices]...,
+                    onchange=js"""function(event) { $(obs).notify(event.target.value); }""",
+                    style=select_style,
+                )
+            elseif spec.kind === :int
+                DOM.input(
+                    type="number",
+                    value=string(spec.default),
+                    min=string(spec.range[1]),
+                    max=string(spec.range[2]),
+                    step=string(spec.step),
+                    onchange=js"""function(event) { $(obs).notify(parseInt(event.target.value)); }""",
+                    style=input_style,
+                )
+            elseif spec.kind === :float
+                DOM.input(
+                    type="number",
+                    value=string(spec.default),
+                    min=string(spec.range[1]),
+                    max=string(spec.range[2]),
+                    step=string(spec.step),
+                    onchange=js"""function(event) { $(obs).notify(parseFloat(event.target.value)); }""",
+                    style=input_style,
+                )
+            elseif spec.kind === :bool
+                DOM.input(
+                    type="checkbox",
+                    checked=spec.default,
+                    onchange=js"""function(event) { $(obs).notify(event.target.checked); }""",
+                    style="margin-right: 3px;",
+                )
+            else
+                DOM.span("(unsupported: $(spec.kind))")
+            end
+            push!(elements, DOM.span(
+                DOM.span(spec.label * " "; style="font-size: 0.85em; margin: 0 4px 0 10px; color: #555;"),
+                ctrl,
+                title=spec.description,
+                style="display: inline-flex; align-items: center;",
+            ))
+        end
+        DOM.span(elements...)
+    end
+
     fit_trigger = Observable(0)
     fit_button = DOM.button(
         "🎯 Fit",
@@ -413,10 +488,33 @@ function create_interactive_app(session)
         ModelType   = MODEL_REGISTRY[mkey]
         OptType     = OPTIMIZER_REGISTRY[okey]
 
+        # Assemble kwargs from the introspected option observables.
+        kwargs = Dict{Symbol, Any}()
+        for spec in optimizer_options(OptType)
+            haskey(opt_value_obs[], spec.name) || continue
+            raw = opt_value_obs[][spec.name][]
+            val = try
+                if spec.kind === :choice
+                    raw isa Symbol ? raw : Symbol(raw)
+                elseif spec.kind === :int
+                    Int(raw)
+                elseif spec.kind === :float
+                    Float64(raw)
+                elseif spec.kind === :bool
+                    Bool(raw)
+                else
+                    raw
+                end
+            catch
+                spec.default
+            end
+            kwargs[spec.name] = val
+        end
+
         fit_status[] = "fitting"
         Threads.@spawn begin
             try
-                opt = OptType()                       # default-constructed optimizer
+                opt = OptType(; kwargs...)
                 t0  = time()
                 m   = fit_brdf(opt, ModelType, brdf)
                 dt  = round(time() - t0, digits=2)
@@ -519,6 +617,7 @@ function create_interactive_app(session)
                     model_select,
                     DOM.span(" Optimizer ", style="font-size: 0.85em; margin: 0 4px 0 12px;"),
                     optimizer_select,
+                    option_controls,
                     fit_button,
                     status_badge,
                     style="display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 6px;"

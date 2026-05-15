@@ -37,8 +37,47 @@ abstract type BRDFModel <: BRDFData end
 Abstract supertype for fitting algorithms.
 Each optimizer must implement:
 - `fit_brdf(optimizer, model_type, data)` - Fit model to data
+
+Optimizers may also declare their tunable knobs via `optimizer_options`
+so the UI (and future hyperparameter tuners) can introspect them.
 """
 abstract type BRDFOptimizer end
+
+"""
+    OptimizerOption
+
+Declarative description of one tunable optimizer knob. The UI reads these
+and renders a control; a hyperparameter tuner can read the same description
+to know the search space.
+
+# Fields
+- `name`:        Keyword argument name passed to the optimizer constructor.
+- `label`:       Human-readable label for the UI.
+- `kind`:        One of `:choice`, `:int`, `:float`, `:bool`.
+- `default`:     Default value (matches the optimizer's own default).
+- `choices`:     Allowed values for `:choice` kind; empty otherwise.
+- `range`:       `(min, max)` for `:int` / `:float`; `(0, 0)` otherwise.
+- `step`:        Step size for `:int` / `:float`; `nothing` otherwise.
+- `description`: One-line explanation, suitable for a tooltip.
+"""
+struct OptimizerOption
+    name::Symbol
+    label::String
+    kind::Symbol
+    default::Any
+    choices::Vector{Any}
+    range::Tuple{Any,Any}
+    step::Any
+    description::String
+end
+
+"""
+    optimizer_options(::Type{<:BRDFOptimizer}) -> Vector{OptimizerOption}
+
+Return the list of tunable options for an optimizer type. Default is empty;
+optimizers override this to expose their constructor kwargs.
+"""
+optimizer_options(::Type{<:BRDFOptimizer}) = OptimizerOption[]
 
 
 # ============================================================================
@@ -331,3 +370,4 @@ export vec3, normalize_vec, rgb, n_samples_str
 export FORMAT_REGISTRY, MODEL_REGISTRY, OPTIMIZER_REGISTRY
 export register_format!, register_model!, register_optimizer!
 export evaluate, glsl_shader, shader_parameters
+export OptimizerOption, optimizer_options

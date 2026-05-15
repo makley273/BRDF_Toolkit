@@ -255,7 +255,9 @@ export evaluate, glsl_shader, shader_parameters
 # Concrete model types (loaded as plugins, but re-exported for convenience)
 export LambertianModel
 export CookTorranceModel, CookTorranceSpecularModel, CookTorranceFresnelDiffuseModel, CookTorranceScaledDiffuseModel
+export CookTorranceAnisotropicModel
 export GGXModel, GGXSpecularModel, GGXFresnelDiffuseModel, GGXScaledDiffuseModel
+export GGXAnisotropicModel
 
 # BRDF lookup interface (lookup is the unified API for both measured + analytical)
 export lookup, lookup_batch, brdf_value

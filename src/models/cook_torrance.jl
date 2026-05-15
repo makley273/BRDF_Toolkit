@@ -4,17 +4,17 @@ Cook-Torrance microfacet BRDF model.
 Implements a diffuse + specular BRDF:
     f(wi, wo) = albedo/π  +  F(wi,h) · D(h) · G(wi,wo) / (4·NdotL·NdotV)
 
-Components:
-- D: GGX/Trowbridge-Reitz normal distribution function
-- G: Smith-GGX height-correlated geometry term (separable form)
+Components (classic Cook-Torrance 1982):
+- D: Beckmann normal distribution function
+- G: V-cavity geometric attenuation `min(1, 2·NH·NV/VH, 2·NH·NL/VH)`
 - F: Schlick Fresnel approximation
 
 Roughness parameterisation follows the Disney/Unreal convention:
     α = roughness²  (perceptual roughness → linear roughness)
 
 References:
-- Cook & Torrance (1982)
-- Walter et al., "Microfacet Models for Refraction" (2007) — GGX NDF & Smith G
+- Cook & Torrance, "A Reflectance Model for Computer Graphics" (1982)
+- Beckmann & Spizzichino, "The scattering of electromagnetic waves..." (1963)
 - Schlick (1994) — Fresnel approximation
 - Burley (2012) — Disney roughness remap
 """
@@ -30,7 +30,9 @@ using LinearAlgebra
 """
     CookTorranceModel <: BRDFModel
 
-Microfacet BRDF with GGX NDF, Smith-GGX geometry, and Schlick Fresnel.
+Classic Cook-Torrance microfacet BRDF: Beckmann NDF + V-cavity geometry +
+Schlick Fresnel. Distinct from `GGXModel`, which uses the GGX NDF with Smith
+masking (longer highlight tails).
 
 # Fields
 - `roughness`: Perceptual roughness ∈ [0, 1]. α = roughness² is used internally.
@@ -81,8 +83,8 @@ function evaluate(model::CookTorranceModel,
     alpha  = model.roughness * model.roughness
     alpha2 = max(alpha * alpha, 1.0f-6)
 
-    D = _ggx_d(NdotH, alpha2)
-    G = _smith_g1(NdotL, alpha2) * _smith_g1(NdotV, alpha2)
+    D = _beckmann_d(NdotH, alpha2)
+    G = _vcavity_g(NdotL, NdotV, NdotH, VdotH)
 
     Fr = _schlick(model.F0.r, VdotH)
     Fg = _schlick(model.F0.g, VdotH)

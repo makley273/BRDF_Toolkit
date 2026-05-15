@@ -35,6 +35,8 @@ ALL_MODELS = [
     GGXSpecularModel(0.3f0, RGB{Float32}(0.9f0,0.7f0,0.1f0)),
     GGXFresnelDiffuseModel(0.5f0, RGB{Float32}(0.04f0,0.04f0,0.04f0), RGB{Float32}(0.6f0,0.4f0,0.2f0)),
     GGXScaledDiffuseModel(0.35f0, RGB{Float32}(0.05f0,0.05f0,0.05f0), RGB{Float32}(0.4f0,0.5f0,0.6f0), 0.6f0),
+    CookTorranceAnisotropicModel(0.3f0, 0.5f0, RGB{Float32}(0.04f0,0.04f0,0.04f0), RGB{Float32}(0.4f0,0.4f0,0.4f0)),
+    GGXAnisotropicModel(0.3f0, 0.5f0, RGB{Float32}(0.04f0,0.04f0,0.04f0), RGB{Float32}(0.4f0,0.4f0,0.4f0)),
 ]
 
 HEMISPHERE_DIRS = [sph(theta, phi)
@@ -164,20 +166,21 @@ RECIPROCITY_PAIRS = [
         end
     end
 
-    @testset "CookTorrance == GGX (same NDF/G/F, same params)" begin
-        # Both use identical GGX NDF + Smith G + Schlick F, so for same params
-        # the specular lobe must be numerically identical.
+    @testset "CookTorrance differs from GGX (different NDF/G)" begin
+        # Cook-Torrance uses Beckmann + V-cavity G; GGX uses GGX NDF + Smith G.
+        # For the same params they must produce noticeably different specular
+        # lobes — otherwise one is silently mirroring the other.
         r  = 0.5f0
         F0 = RGB{Float32}(0.04f0,0.04f0,0.04f0)
         ct = CookTorranceSpecularModel(r, F0)
         gx = GGXSpecularModel(r, F0)
+        max_diff = 0.0f0
         for wi in HEMISPHERE_DIRS[1:3:end], wo in HEMISPHERE_DIRS[1:3:end]
             fa = evaluate(ct, wi, wo)
             fb = evaluate(gx, wi, wo)
-            @test fa.r ≈ fb.r  atol=1e-5
-            @test fa.g ≈ fb.g  atol=1e-5
-            @test fa.b ≈ fb.b  atol=1e-5
+            max_diff = max(max_diff, abs(fa.r - fb.r), abs(fa.g - fb.g), abs(fa.b - fb.b))
         end
+        @test max_diff > 1e-3
     end
 
     @testset "Energy conservation: Lambertian reflectance = albedo" begin

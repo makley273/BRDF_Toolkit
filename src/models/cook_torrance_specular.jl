@@ -7,8 +7,8 @@ Use this variant when fitting metallic or purely reflective materials,
 or as a baseline to isolate the specular lobe.
 
 Components:
-- D: GGX/Trowbridge-Reitz normal distribution function
-- G: Smith-GGX geometry term (separable form)
+- D: Beckmann normal distribution function
+- G: V-cavity geometric attenuation
 - F: Schlick Fresnel approximation
 
 Roughness parameterisation: α = roughness²  (Disney/Unreal convention)
@@ -73,8 +73,8 @@ function evaluate(model::CookTorranceSpecularModel,
     alpha  = model.roughness * model.roughness
     alpha2 = max(alpha * alpha, 1.0f-6)
 
-    D = _ggx_d(NdotH, alpha2)
-    G = _smith_g1(NdotL, alpha2) * _smith_g1(NdotV, alpha2)
+    D = _beckmann_d(NdotH, alpha2)
+    G = _vcavity_g(NdotL, NdotV, NdotH, VdotH)
 
     Fr = _schlick(model.F0.r, VdotH)
     Fg = _schlick(model.F0.g, VdotH)

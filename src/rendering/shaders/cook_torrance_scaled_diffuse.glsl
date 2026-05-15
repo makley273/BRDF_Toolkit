@@ -5,8 +5,8 @@
 // u_kd is a free scalar weight ∈ [0, 1] that controls the diffuse/specular balance
 // independently of the albedo colour. kd = 0 → pure specular; kd = 1 → full diffuse.
 //
-// D: GGX normal distribution function
-// G: Smith-GGX geometry term (separable)
+// D: Beckmann normal distribution function
+// G: V-cavity geometric attenuation
 // F: Schlick Fresnel approximation
 //
 // Roughness parameterisation: α = roughness², α² = roughness⁴  (Disney convention)
@@ -24,13 +24,15 @@ uniform float u_kd;
 
 const float PI = 3.14159265358979323846;
 
-float ggx_d(float NdotH, float alpha2) {
-    float d = NdotH * NdotH * (alpha2 - 1.0) + 1.0;
-    return alpha2 / (PI * d * d);
+float beckmann_d(float NdotH, float alpha2) {
+    float NdotH2 = max(NdotH * NdotH, 1e-6);
+    float tan2   = (1.0 - NdotH2) / NdotH2;
+    return exp(-tan2 / alpha2) / (PI * alpha2 * NdotH2 * NdotH2);
 }
 
-float smith_g1(float NdotV, float alpha2) {
-    return 2.0 * NdotV / (NdotV + sqrt(alpha2 + (1.0 - alpha2) * NdotV * NdotV));
+float vcavity_g(float NdotL, float NdotV, float NdotH, float VdotH) {
+    float vh = max(VdotH, 1e-6);
+    return min(1.0, min(2.0 * NdotH * NdotV / vh, 2.0 * NdotH * NdotL / vh));
 }
 
 vec3 schlick(vec3 F0, float VdotH) {
@@ -52,8 +54,8 @@ vec3 brdf_evaluate(vec3 wi, vec3 wo, vec3 N) {
     float alpha  = u_roughness * u_roughness;
     float alpha2 = max(alpha * alpha, 1e-6);
 
-    float D = ggx_d(NdotH, alpha2);
-    float G = smith_g1(NdotL, alpha2) * smith_g1(NdotV, alpha2);
+    float D = beckmann_d(NdotH, alpha2);
+    float G = vcavity_g(NdotL, NdotV, NdotH, VdotH);
     vec3  F = schlick(u_F0, VdotH);
 
     vec3 spec = D * G * F / (4.0 * NdotL * NdotV);

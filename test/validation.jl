@@ -83,6 +83,18 @@ end
     return F0 .+ (1.0f0 .- F0) .* x5   # broadcast: scalar ± SVector
 end
 
+@inline function glsl_beckmann_d(NdotH::Float32, alpha2::Float32)::Float32
+    NdotH2 = max(NdotH * NdotH, 1.0f-6)
+    tan2   = (1.0f0 - NdotH2) / NdotH2
+    return exp(-tan2 / alpha2) / (Float32(π) * alpha2 * NdotH2 * NdotH2)
+end
+
+@inline function glsl_vcavity_g(NdotL::Float32, NdotV::Float32,
+                                 NdotH::Float32, VdotH::Float32)::Float32
+    vh = max(VdotH, 1.0f-6)
+    return min(1.0f0, min(2.0f0 * NdotH * NdotV / vh, 2.0f0 * NdotH * NdotL / vh))
+end
+
 # --- Lambertian GLSL reference ---
 
 """
@@ -154,8 +166,8 @@ function glsl_cook_torrance(u_roughness::Float32,
     alpha  = u_roughness * u_roughness
     alpha2 = max(alpha * alpha, 1.0f-6)
 
-    D    = glsl_ggx_d(NdotH, alpha2)
-    G    = glsl_smith_g1(NdotL, alpha2) * glsl_smith_g1(NdotV, alpha2)
+    D    = glsl_beckmann_d(NdotH, alpha2)
+    G    = glsl_vcavity_g(NdotL, NdotV, NdotH, VdotH)
     F    = glsl_schlick(u_F0, VdotH)
     spec = D * G * F / (4.0f0 * NdotL * NdotV)
     diff = u_albedo / Float32(π)

@@ -390,6 +390,28 @@ fit_brdf(opt::LevenbergMarquardt, ::Type{CookTorranceScaledDiffuseModel}, data::
 fit_brdf(opt::LevenbergMarquardt, ::Type{GGXScaledDiffuseModel}, data::MeasuredBRDF) =
     _fit_microfacet_scaled(opt, GGXScaledDiffuseModel, data)
 
+# -- 8-parameter anisotropic + diffuse: (rough_x, rough_y, F0rgb, albedo_rgb) --
+
+function _fit_microfacet_aniso_diffuse(opt, ModelType, data)
+    reconstruct(p) = ModelType(
+        Float32(p[1]),
+        Float32(p[2]),
+        RGB{Float32}(p[3], p[4], p[5]),
+        RGB{Float32}(p[6], p[7], p[8]),
+    )
+    p0    = [0.1,       0.1,       0.04, 0.04, 0.04,   0.3, 0.3, 0.3]
+    lower = [_ROUGH_LO, _ROUGH_LO, _F0_LO, _F0_LO, _F0_LO,   _ALB_LO, _ALB_LO, _ALB_LO]
+    upper = [_ROUGH_HI, _ROUGH_HI, _F0_HI, _F0_HI, _F0_HI,   _ALB_HI, _ALB_HI, _ALB_HI]
+    _, model, _ = _fit_lm(opt, reconstruct, p0, lower, upper, data)
+    return model
+end
+
+fit_brdf(opt::LevenbergMarquardt, ::Type{CookTorranceAnisotropicModel}, data::MeasuredBRDF) =
+    _fit_microfacet_aniso_diffuse(opt, CookTorranceAnisotropicModel, data)
+
+fit_brdf(opt::LevenbergMarquardt, ::Type{GGXAnisotropicModel}, data::MeasuredBRDF) =
+    _fit_microfacet_aniso_diffuse(opt, GGXAnisotropicModel, data)
+
 # ============================================================================
 # Registration
 # ============================================================================

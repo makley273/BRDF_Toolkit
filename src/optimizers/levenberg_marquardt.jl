@@ -42,10 +42,20 @@ Levenberg-Marquardt fitter (via LsqFit.jl).
                    grazing-angle noise (default `true`).
 - `loss`:          Residual transform. `:log` fits `log1p(f)` (default — handles
                    large specular/diffuse dynamic range). `:linear` fits raw `f`.
-- `sampling`:      Direction sampling strategy. `:rusinkiewicz` (default) samples
-                   in `(θ_h, φ_h, θ_d, φ_d)` space so the specular lobe is
-                   densely covered. `:uniform` samples `(wi, wo)` independently
-                   on the hemisphere (poor for sharp specular lobes).
+- `sampling`:      Direction sampling strategy.
+                   * `:rusinkiewicz` (default) — half-angle sampling with
+                     quadratic θ_h bias toward the specular ridge. Best for
+                     sharp isotropic lobes.
+                   * `:uniform_half` — half-angle sampling, uniform in θ_h.
+                     Hits the specular ridge (so F0 is identifiable) while
+                     spreading samples evenly across the lobe — better for
+                     anisotropic materials.
+                   * `:mixed` — 80% independent uniform `(wi, wo)` + 20%
+                     near-specular draws. Preserves broad off-peak coverage
+                     and still gives F0 a gradient signal.
+                   * `:uniform` — independent cosine-weighted `(wi, wo)`.
+                     Diagnostic baseline; cannot reliably fit F0/roughness
+                     because the specular ridge is essentially never sampled.
 """
 struct LevenbergMarquardt <: BRDFOptimizer
     n_samples::Int
@@ -68,8 +78,8 @@ function LevenbergMarquardt(;
 )
     loss in (:log, :linear) ||
         throw(ArgumentError("loss must be :log or :linear, got $loss"))
-    sampling in (:rusinkiewicz, :uniform) ||
-        throw(ArgumentError("sampling must be :rusinkiewicz or :uniform, got $sampling"))
+    sampling in (:rusinkiewicz, :uniform_half, :mixed, :uniform) ||
+        throw(ArgumentError("sampling must be one of :rusinkiewicz, :uniform_half, :mixed, :uniform; got $sampling"))
     LevenbergMarquardt(Int(n_samples), Int(max_iter), Float64(x_tol),
                        Float64(g_tol), cosine_weight, loss, sampling)
 end
@@ -122,19 +132,31 @@ function _sample_directions_uniform(n::Int)
 end
 
 """
-    _sample_directions_rusinkiewicz(n) -> (wis, wos)
+    _sample_directions_halfangle(n; theta_h_power=2, theta_h_max=π/2, idx_offset=0) -> (wis, wos)
 
 Sample `(wi, wo)` pairs in Rusinkiewicz half-angle space `(θ_h, φ_h, θ_d, φ_d)`.
 
-The key property: `θ_h = 0` corresponds to the perfect mirror direction, so
-biasing samples towards small `θ_h` (via a quadratic remap of the Halton
-sequence) puts dense coverage on the specular lobe — exactly where a sharp
-microfacet BRDF needs it. This matches MERL's native storage layout.
+`θ_h = 0` corresponds to the perfect mirror direction. `theta_h_power` controls
+how strongly samples are biased toward the specular ridge:
+- `2` (default) — quadratic remap matching MERL's sqrt index mapping. Best for
+  sharp isotropic specular lobes.
+- `1` — uniform in θ_h. Still hits the ridge (parameterization is centered on
+  it) but spreads samples across the full lobe — better for anisotropic shapes
+  and for keeping the F0 Jacobian column well-conditioned without over-biasing.
 
-Invalid samples (where wi or wo drops below the horizon) are replaced with
-the next valid Halton draw.
+`theta_h_max` caps θ_h; pass a small value to draw *only* near-specular pairs
+(used by `:mixed` sampling to top up F0 coverage).
+
+`idx_offset` shifts the Halton stream so callers can mix multiple halfangle
+draws without overlap.
+
+Invalid samples (wi or wo below the horizon) are replaced with the next valid
+Halton draw.
 """
-function _sample_directions_rusinkiewicz(n::Int)
+function _sample_directions_halfangle(n::Int;
+                                       theta_h_power::Real = 2,
+                                       theta_h_max::Real = π/2,
+                                       idx_offset::Int = 0)
     wis = Vector{SVector{3, Float32}}(undef, n)
     wos = Vector{SVector{3, Float32}}(undef, n)
 
@@ -144,13 +166,13 @@ function _sample_directions_rusinkiewicz(n::Int)
     max_tries = 50 * n
     while k <= n && idx < max_tries
         idx += 1
-        u1 = _halton(idx, 2)
-        u2 = _halton(idx, 3)
-        u3 = _halton(idx, 5)
-        u4 = _halton(idx, 7)
+        u1 = _halton(idx + idx_offset, 2)
+        u2 = _halton(idx + idx_offset, 3)
+        u3 = _halton(idx + idx_offset, 5)
+        u4 = _halton(idx + idx_offset, 7)
 
-        # Quadratic remap biases θ_h near 0 (mirrors MERL's sqrt index mapping)
-        theta_h = Float32(u1 * u1 * (π / 2))
+        # Power remap controls θ_h bias toward the specular ridge
+        theta_h = Float32((u1 ^ theta_h_power) * theta_h_max)
         phi_h   = Float32(2π * u2)
         theta_d = Float32(u3 * (π / 2))
         phi_d   = Float32(π * u4)      # [0, π]: exploit isotropic reciprocity
@@ -204,14 +226,40 @@ function _sample_directions_rusinkiewicz(n::Int)
 end
 
 """
+    _sample_directions_mixed(n) -> (wis, wos)
+
+Combine independent uniform `(wi, wo)` sampling with a smaller batch of
+near-specular half-angle draws. The uniform majority preserves broad off-peak
+coverage (important for anisotropic lobe shape), while the near-specular minority
+ensures F0 has a non-degenerate Jacobian column.
+
+Split: 80% uniform + 20% near-specular (θ_h ∈ [0, π/8], uniform).
+"""
+function _sample_directions_mixed(n::Int)
+    n_spec = max(1, n ÷ 5)
+    n_uni  = n - n_spec
+
+    wis_u, wos_u = _sample_directions_uniform(n_uni)
+    wis_s, wos_s = _sample_directions_halfangle(n_spec;
+                                                 theta_h_power = 1,
+                                                 theta_h_max   = π/8)
+    return vcat(wis_u, wis_s), vcat(wos_u, wos_s)
+end
+
+"""
     _sample_directions(opt) -> (wis, wos)
 
 Dispatch sampling strategy based on `opt.sampling`.
 """
 function _sample_directions(opt::LevenbergMarquardt)
-    if opt.sampling === :rusinkiewicz
-        return _sample_directions_rusinkiewicz(opt.n_samples)
-    else
+    s = opt.sampling
+    if s === :rusinkiewicz
+        return _sample_directions_halfangle(opt.n_samples; theta_h_power = 2)
+    elseif s === :uniform_half
+        return _sample_directions_halfangle(opt.n_samples; theta_h_power = 1)
+    elseif s === :mixed
+        return _sample_directions_mixed(opt.n_samples)
+    else  # :uniform
         return _sample_directions_uniform(opt.n_samples)
     end
 end
@@ -418,7 +466,7 @@ fit_brdf(opt::LevenbergMarquardt, ::Type{GGXAnisotropicModel}, data::MeasuredBRD
 
 optimizer_options(::Type{LevenbergMarquardt}) = OptimizerOption[
     OptimizerOption(:sampling, "Sampling", :choice, :rusinkiewicz,
-                    Any[:rusinkiewicz, :uniform], (0, 0), nothing,
+                    Any[:rusinkiewicz, :uniform_half, :mixed, :uniform], (0, 0), nothing,
                     "Direction sampling strategy"),
     OptimizerOption(:n_samples, "Samples", :int, 1024,
                     Any[], (256, 8192), 256,

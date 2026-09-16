@@ -1,0 +1,12 @@
+.grid > :nth-child(odd) {
+  grid-row: 1;
+  grid-column: calc(var(--index) + 1);
+}
+
+.grid > :nth-child(even) {
+  grid-row: 2;
+  grid-column: calc(var(--index));
+}
+.grid {
+   display: grid;
+}

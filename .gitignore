@@ -1,0 +1,32 @@
+.claude/
+.git/
+.vscode/
+.refact/
+nul
+*.bundled.js
+test/data/merl/
+test/data/utia/
+test/data/bird/
+test/data/data/
+test/data/setup/
+test/data/RGL/
+# .*/
+# Machine-specific CUDA runtime pin (driver version differs per PC)
+LocalPreferences.toml
+BiRD_view/
+exports/
+materials/
+*.lol
+*.bbl
+*.nlo
+*.lot
+*.tdo
+*.toc
+*.aux
+*.log
+*.blg
+*.brf
+*.lof
+
+# Thesis sources live in the main checkout, not in the code repo
+.thesis/
